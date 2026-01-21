@@ -1,0 +1,6 @@
+pandas
+numpy
+plotly
+scipy
+statsmodels
+factor-analyzer
