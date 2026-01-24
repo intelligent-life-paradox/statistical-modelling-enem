@@ -1,6 +1,8 @@
 pandas
 numpy
-plotly
+#plotly
 scipy
 statsmodels
 factor-analyzer
+matplotlib
+seaborn
