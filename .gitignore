@@ -7,6 +7,9 @@ __pycache__/
 
 dados/** 
 
+wandb/
+
+notebooks/analise_exploratoria.ipynb 
 
 dados/microdados_enem_2019/DADOS/
 
