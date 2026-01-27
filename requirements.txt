@@ -5,3 +5,10 @@ statsmodels
 factor-analyzer
 matplotlib
 seaborn
+scikit-learn
+wandb
+xgboost
+econml
+patsy
+lightgbm
+openpyxl
