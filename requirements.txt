@@ -12,3 +12,4 @@ econml
 patsy
 lightgbm
 openpyxl
+plotly
