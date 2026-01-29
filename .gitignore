@@ -5,13 +5,17 @@ __pycache__/
 .vscode/
 
 
-dados/** 
+#dados/** 
+dados/microdados_enem_2019/INPUTS
+dados/microdados_enem_2019/DICIONÁRIO/Dicionário_Microdados_Enem_2019.ods
+dados/microdados_enem_2019/dados_enem_processados_v2.csv.zip
 
 wandb/
 
+.venv_causal/
 notebooks/analise_exploratoria.ipynb 
 
-dados/microdados_enem_2019/DADOS/
+dados/microdados_enem_2019/DADOS
 
 dados/microdados_enem_2019/dados_enem_processados.csv
 
