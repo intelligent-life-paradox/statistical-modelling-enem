@@ -1,0 +1,89 @@
+name: Pipeline de Data Science - Enem 2019
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs: 
+  # job 1: Modelos estatísticos convencionais e análise exploratória
+  test-standard: 
+    runs-on: ubuntu-latest
+    steps: 
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.7'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy statsmodels patsy scikit-learn matplotlib seaborn scipy pytest nbmake
+
+      - name: Data preparation 
+        run: |
+          # Cria o zip falso usando o sample para enganar o notebook
+          zip -j dados/microdados_enem_2019/dados_enem_processados_v2.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
+
+      - name: Run Stats. Notebooks
+        run: |
+          pytest --nbmake notebooks/*.ipynb \
+            --ignore=notebooks/tratamento_de_dados.ipynb \
+            --ignore=notebooks/causal_tree.ipynb
+
+  # job 2: Modelagem causal
+  test-causal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.7'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy scikit-learn matplotlib pytest nbmake econml lightgbm
+
+      - name: Data preparation 
+        run: |
+          zip -j dados/microdados_enem_2019/dados_enem_processados_v2.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
+        
+      - name: Run Causal Modeling Notebook
+        run: | 
+          pytest --nbmake notebooks/causal_tree.ipynb
+
+  # job 3: Interpretador de IA
+  ai_interpreter:
+    needs: [test-standard, test-causal]
+    runs-on: ubuntu-latest
+    steps: 
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.7'
+
+      - name: Install dependencies
+        run: |
+          pip install google-generativeai nbformat
+
+      - name: Gerar Análise com Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python AI_interpreter.py
+
+      - name: Postar Relatório no PR
+        if: github.event_name == 'pull_request'
+        uses: mshick/add-pr-comment@v2
+        with:
+          message-path: relatorio_ia.md
