@@ -20,19 +20,27 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas numpy statsmodels patsy scikit-learn matplotlib seaborn scipy pytest nbmake factor-analyzer plotly openpyxl lightgbm
+         
+          pip install pandas numpy statsmodels patsy scikit-learn matplotlib seaborn scipy pytest nbmake factor-analyzer plotly openpyxl wandb
 
-      - name: Data preparation 
+      - name: Data preparation
         run: |
-          # Criamos as DUAS versões para garantir que todos os notebooks achem o que precisam
-          # 1. Versão CSV simples
-          cp dados/microdados_enem_2019/sample_dados_enem_processados.csv dados/microdados_enem_2019/dados_enem_processados.csv
+          # Criando a estrutura exata que os notebooks pedem 
+          mkdir -p dados/microdados_enem_2019/DADOS
           
+          # Criando os arquivos alvo para evitar FileNotFoundError
+          cp dados/microdados_enem_2019/sample_dados_enem_processados.csv dados/microdados_enem_2019/DADOS/MICRODADOS_ENEM_2019.csv
+          cp dados/microdados_enem_2019/sample_dados_enem_processados.csv dados/microdados_enem_2019/dados_enem_processados.csv
+          cp dados/microdados_enem_2019/sample_dados_enem_processados.csv dados/microdados_enem_2019/dados_enem_processados_v2.csv
           zip -j dados/microdados_enem_2019/dados_enem_processados_v2.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
 
       - name: Run Stats. Notebooks
-        # Comando em linha única para evitar erros de ignore
-        run: pytest --nbmake notebooks/*.ipynb --ignore=notebooks/tratamentos_de_dados.ipynb --ignore=notebooks/causal_tree.ipynb
+        #
+        run: |
+          pytest --nbmake \
+            notebooks/analise_exploratoria.ipynb \
+            notebooks/clusters.ipynb \
+            notebooks/modelagem_stat.ipynb
 
   test-causal:
     runs-on: ubuntu-latest
@@ -44,10 +52,11 @@ jobs:
         with:
           python-version: '3.11.7'
       - name: Install dependencies
-        run: pip install pandas numpy scikit-learn matplotlib pytest nbmake econml lightgbm
+        run: pip install pandas numpy scikit-learn matplotlib pytest nbmake econml lightgbm openpyxl wandb
       - name: Data preparation 
         run: |
-          cp dados/microdados_enem_2019/sample_dados_enem_processados.csv dados/microdados_enem_2019/dados_enem_processados.csv
+          mkdir -p dados/microdados_enem_2019/DADOS
+          cp dados/microdados_enem_2019/sample_dados_enem_processados.csv dados/microdados_enem_2019/DADOS/MICRODADOS_ENEM_2019.csv
           zip -j dados/microdados_enem_2019/dados_enem_processados_v2.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
       - name: Run Causal Modeling Notebook
         run: pytest --nbmake notebooks/causal_tree.ipynb
