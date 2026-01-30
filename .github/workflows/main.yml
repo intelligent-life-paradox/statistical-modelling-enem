@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ip install pandas numpy statsmodels patsy scikit-learn matplotlib seaborn scipy pytest nbmake factor-analyzer plotly
+          pip install  pandas numpy statsmodels patsy scikit-learn matplotlib seaborn scipy pytest nbmake factor-analyzer plotly
 
       - name: Data preparation 
         run: |
