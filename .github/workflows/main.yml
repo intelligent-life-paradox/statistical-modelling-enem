@@ -61,7 +61,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install pandas numpy scikit-learn matplotlib pytest \
-            nbmake econml lightgbm openpyxl wandb
+            nbmake econml lightgbm openpyxl wandb plotly
 
       - name: Data preparation 
         run: |
