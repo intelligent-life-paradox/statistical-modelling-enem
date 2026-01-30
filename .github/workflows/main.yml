@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs: 
-  # job 1: ambiente padrão pras análises estatísticas
+  # job  1 
   test-standard: 
     runs-on: ubuntu-latest
     steps: 
@@ -27,21 +27,26 @@ jobs:
 
       - name: Data preparation
         run: |
-          # Criamos os arquivos que os notebooks esperam dentro da pasta do repositório
-          # 1. Versão CSV pura
+          #  Removemos zips que possam ter vindo do commit para evitar erro de "Multiple files"
+          rm -f dados/microdados_enem_2019/*.zip
+          
+          #  arquivo CSV simples
           cp dados/microdados_enem_2019/sample_dados_enem_processados.csv dados/microdados_enem_2019/dados_enem_processados.csv
-          # 2. Versão ZIP (conforme o seu read_csv)
+          
+          # ZIP (sem v2)
           zip -j dados/microdados_enem_2019/dados_enem_processados.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
+          
+          # Criamos o ZIP (com v2) para os notebooks que pedem essa versão
+          zip -j dados/microdados_enem_2019/dados_enem_processados_v2.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
 
       - name: Run Stats. Notebooks
-        # Rodamos apenas os notebooks que este ambiente suporta
         run: |
           pytest --nbmake \
             notebooks/analise_exploratoria.ipynb \
             notebooks/clusters.ipynb \
             notebooks/modelagem_stat.ipynb
 
-  # job 2: ambiente de inf. causal 
+  # job 2 
   test-causal:
     runs-on: ubuntu-latest
     steps:
@@ -60,35 +65,32 @@ jobs:
 
       - name: Data preparation 
         run: |
+          rm -f dados/microdados_enem_2019/*.zip
+          # Criamos as duas versões de zip aqui também para evitar FileNotFoundError
           zip -j dados/microdados_enem_2019/dados_enem_processados.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
+          zip -j dados/microdados_enem_2019/dados_enem_processados_v2.csv.zip dados/microdados_enem_2019/sample_dados_enem_processados.csv
       
       - name: Run Causal Modeling Notebook
         run: pytest --nbmake notebooks/causal_tree.ipynb
 
-  # job 3: relatório de IA
+  # job 3 
   ai_interpreter:
-    # Só executa se as duas tarefas de teste acima passarem
     needs: [test-standard, test-causal]
     runs-on: ubuntu-latest
     steps: 
       - name: Checkout repo
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11.7'
-
       - name: Install dependencies
         run: pip install google-generativeai nbformat
-
       - name: Gerar Análise com Gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python AI_interpreter.py
-
       - name: Postar Relatório no PR
-        
         if: github.event_name == 'pull_request'
         uses: mshick/add-pr-comment@v2
         with:
