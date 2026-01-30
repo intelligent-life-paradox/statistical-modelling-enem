@@ -90,8 +90,22 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python AI_interpreter.py
-      - name: Postar Relatório no PR
-        if: github.event_name == 'pull_request'
+        
+      - name: Exibir no resumo do GitHub (summary)
+        if: always() 
+        run: |
+          cat relatorio_ia.md >> $GITHUB_STEP_SUMMARY
+
+      
+      - name: Salvar relatorio como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: analise-ia-notebooks
+          path: relatorio_ia.md
+
+      
+      - name: Postar relatório no PR
+        if: github.event_name == 'pull_request' 
         uses: mshick/add-pr-comment@v2
         with:
           message-path: relatorio_ia.md
