@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas numpy statsmodels patsy scikit-learn matplotlib seaborn scipy pytest nbmake
+          pip install ip install pandas numpy statsmodels patsy scikit-learn matplotlib seaborn scipy pytest nbmake factor-analyzer plotly
 
       - name: Data preparation 
         run: |
@@ -33,7 +33,7 @@ jobs:
       - name: Run Stats. Notebooks
         run: |
           pytest --nbmake notebooks/*.ipynb \
-            --ignore=notebooks/tratamento_de_dados.ipynb \
+            --ignore=notebooks/tratamentos_de_dados.ipynb \
             --ignore=notebooks/causal_tree.ipynb
 
   # job 2: Modelagem causal
