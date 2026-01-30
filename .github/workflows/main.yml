@@ -85,7 +85,9 @@ jobs:
         with:
           python-version: '3.11.7'
       - name: Install dependencies
-        run: pip install google-generativeai nbformat
+        run: |
+          pip install --upgrade pip
+          pip install -U google-generativeai nbformat
       - name: Gerar Análise com Gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -109,3 +111,4 @@ jobs:
         uses: mshick/add-pr-comment@v2
         with:
           message-path: relatorio_ia.md
+        
