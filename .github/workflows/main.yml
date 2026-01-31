@@ -89,9 +89,9 @@ jobs:
       - name: Install dependencies
         run: pip install openai nbformat
 
-      - name: Gerar Análise com DeepSeek
+      - name: Gerar Análise com Groq 
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python AI_interpreter.py
 
       - name: Exibir no resumo do GitHub (summary)
