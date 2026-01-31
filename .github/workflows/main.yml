@@ -80,35 +80,25 @@ jobs:
     steps: 
       - name: Checkout repo
         uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11.7'
+
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-           pip install --no-cache-dir -U google-generativeai nbformat
-      - name: Gerar Análise com Gemini
+        run: pip install openai nbformat
+
+      - name: Gerar Análise com DeepSeek
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python AI_interpreter.py
-        
+
       - name: Exibir no resumo do GitHub (summary)
-        if: always() 
-        run: |
-          cat relatorio_ia.md >> $GITHUB_STEP_SUMMARY
+        run: cat relatorio_ia.md >> $GITHUB_STEP_SUMMARY
 
-      
-      - name: Salvar relatorio como artefato
-        uses: actions/upload-artifact@v4
-        with:
-          name: analise-ia-notebooks
-          path: relatorio_ia.md
-
-      
-      - name: Postar relatório no PR
+      - name: Postar Relatório no PR
         if: github.event_name == 'pull_request' 
         uses: mshick/add-pr-comment@v2
         with:
           message-path: relatorio_ia.md
-        
