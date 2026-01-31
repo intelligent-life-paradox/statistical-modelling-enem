@@ -5,7 +5,7 @@ import google.generativeai as genai
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel(model_name="gemini-1.5-flash-latest")
 
 def extrair_conteudo_notebook(caminho_arquivo):
     """Lê o notebook e resume o conteúdo para a IA não ficar confusa com metadados."""
@@ -73,7 +73,7 @@ for arquivo in notebooks_acesso:
     else:
         print(f"Arquivo não encontrado: {arquivo}")
 
-#  Salva o resultado em Markdown para o GitHub Actions ler
+#  Salva o resultado em Markdown para o gitHub Actions ler
 with open("relatorio_ia.md", "w", encoding="utf-8") as f:
     f.write(relatorio_final)
 

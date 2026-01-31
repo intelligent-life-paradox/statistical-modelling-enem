@@ -87,7 +87,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -U google-generativeai nbformat
+           pip install --no-cache-dir -U google-generativeai nbformat
       - name: Gerar Análise com Gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
