@@ -4,8 +4,8 @@ from openai import OpenAI
 
 
 client = OpenAI(
-    api_key=os.getenv("DEEPSEEK_API_KEY"),
-    base_url="https://api.deepseek.com"
+    api_key=os.getenv("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
 )
 
 def extrair_conteudo_notebook(caminho_arquivo):
@@ -13,7 +13,8 @@ def extrair_conteudo_notebook(caminho_arquivo):
         nb = nbformat.read(f, as_version=4)
     
     texto_resumo = []
-    for cell in nb.cells[:40]: 
+    
+    for cell in nb.cells[:35]: 
         if cell.cell_type == 'markdown':
             texto_resumo.append(f"[TEXTO]: {cell.source[:300]}")
         elif cell.cell_type == 'code':
@@ -21,13 +22,13 @@ def extrair_conteudo_notebook(caminho_arquivo):
             
     return "\n".join(texto_resumo)
 
-def analisar_com_deepseek(nome_arquivo, conteudo):
+def analisar_com_groq(nome_arquivo, conteudo):
     prompt = f"""
     Analise o Jupyter Notebook '{nome_arquivo}' sobre o ENEM.
-    Resuma:
-    1. Objetivo.
-    2. Técnicas (statsmodels, econml, etc).
-    3. Insights dos dados.
+    Resuma em português:
+    1. Objetivo do modelo.
+    2. Técnicas estatísticas/ML usadas.
+    3. Insights principais.
     
     Conteúdo:
     {conteudo}
@@ -35,18 +36,18 @@ def analisar_com_deepseek(nome_arquivo, conteudo):
     
     try:
         response = client.chat.completions.create(
-            model="deepseek-chat",
+            # tomando o llama pois ele é gratuito 
+            model="llama-3.3-70b-versatile",
             messages=[
-                {"role": "system", "content": "Você é um especialista em Ciência de Dados."},
+                {"role": "system", "content": "Você é um Engenheiro de Dados especialista em ENEM."},
                 {"role": "user", "content": prompt},
-            ],
-            stream=False
+            ]
         )
         return response.choices[0].message.content
     except Exception as e:
         return f"Erro na análise: {e}"
 
-# notebooks
+#  notebooks
 notebooks = [
     'notebooks/analise_exploratoria.ipynb',
     'notebooks/clusters.ipynb',
@@ -54,14 +55,14 @@ notebooks = [
     'notebooks/causal_tree.ipynb'
 ]
 
-aviso = "> [!IMPORTANT]\n> Análise gerada por IA (DeepSeek) baseada em amostra reduzida.\n\n"
-relatorio_final = aviso + "#  Relatório DeepSeek - Modelagem ENEM\n\n"
+aviso = "> [!IMPORTANT]\n> Análise técnica gerada via **Groq (Llama 3.3)**. Baseada em amostra teste.\n\n"
+relatorio_final = aviso + "#  Relatório de Inteligência Artificial - Modelagem ENEM\n\n"
 
 for arquivo in notebooks:
     if os.path.exists(arquivo):
-        print(f"Analisando com DeepSeek: {arquivo}...")
+        print(f"Analisando com Groq: {arquivo}...")
         conteudo = extrair_conteudo_notebook(arquivo)
-        analise = analisar_com_deepseek(arquivo, conteudo)
+        analise = analisar_com_groq(arquivo, conteudo)
         relatorio_final += f"## Arquivo: {os.path.basename(arquivo)}\n\n{analise}\n\n---\n\n"
 
 with open("relatorio_ia.md", "w", encoding="utf-8") as f:
