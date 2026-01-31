@@ -91,7 +91,7 @@ jobs:
 
       - name: Gerar Análise com DeepSeek
         env:
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python AI_interpreter.py
 
       - name: Exibir no resumo do GitHub (summary)
