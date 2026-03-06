@@ -15,9 +15,8 @@ A análise será conduzida através de três pilares metodológicos:
 
 Com base nas saídas já obtidas (estatística descritiva, OLS e inferência causal), estes são os achados mais robustos nesta fase:
 
-- **Média de desempenho (MEDIA_CANDIDATO):** aproximadamente **529,17 pontos**, com **IC de 99% entre 525,40 e 532,95**.
-- **Índice de consumo (SCORE_CONSUMO):** média de **15,21**, com **IC de 99% entre 14,77 e 15,65**.
-- **Regressão OLS:** modelo globalmente significativo (**F = 339**, **p < 0,001**), com **R² = 0,337** (ajustado 0,336), indicando poder explicativo relevante para variáveis socioeconômicas e demográficas.
+
+- **Regressão OLS:** modelo globalmente significativo (**F = 339**, **p < 0,001**), com **R² = 0,337** (ajustado 0,336), indicando poder explicativo relevante para variáveis socioeconômicas e demográficas para explicar a nota do candidato no enem.
 - **Efeito causal médio (ATE) do capital cultural:** cerca de **0,117 desvios-padrão** na nota por +1 desvio-padrão de capital cultural; com desvio-padrão da nota em torno de 80 pontos, isso equivale a aproximadamente **9 pontos** no ENEM.
 - **Heterogeneidade por perfil socioeconômico:** os ganhos não são homogêneos; em subgrupos de maior renda, os efeitos podem ser maiores, chegando a magnitudes próximas de **16 pontos por desvio-padrão** de capital cultural em recortes específicos.
 
