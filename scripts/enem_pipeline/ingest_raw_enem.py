@@ -22,6 +22,19 @@ ALIASES = {
     "NU_NOTA_LC": ["nota_lc"],
     "NU_NOTA_MT": ["nota_mt"],
     "NU_NOTA_REDACAO": ["nota_redacao"],
+    # Mapeamentos para colunas que perderam o prefixo 'tp_'
+    "TP_FAIXA_ETARIA": ["faixa_etaria"],
+    "TP_SEXO": ["sexo"],
+    "TP_ESTADO_CIVIL": ["estado_civil"],
+    "TP_COR_RACA": ["cor_raca"],
+    "TP_NACIONALIDADE": ["nacionalidade"],
+    "TP_ST_CONCLUSAO": ["st_conclusao"],
+    "TP_ANO_CONCLUIU": ["ano_concluiu"],
+    "TP_ESCOLA": ["escola"],
+    "TP_ENSINO": ["ensino"],
+    "TP_DEPENDENCIA_ADM_ESC": ["dependencia_adm_esc"],
+    "TP_LOCALIZACAO_ESC": ["localizacao_esc"],
+    "TP_SIT_FUNC_ESC": ["sit_func_esc"],
 }
 
 REQUIRED_CANONICAL_COLUMNS = [
