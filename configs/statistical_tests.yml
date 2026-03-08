@@ -1,0 +1,8 @@
+year: 2019
+sample_size: 1500
+random_seed: 69
+
+gcs:
+  bucket: "enem-data-lake"
+
+output_dir: "results/statistical"

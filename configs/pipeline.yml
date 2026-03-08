@@ -1,0 +1,9 @@
+billing_project_id: "project-00835a80-4099-47ba-834"
+years: [2014, 2015, 2016, 2017, 2018, 2019]
+
+gcs:
+  bucket: "enem-data-lake"
+
+local:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
