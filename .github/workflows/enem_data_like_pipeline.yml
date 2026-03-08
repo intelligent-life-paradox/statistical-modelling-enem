@@ -51,8 +51,8 @@ jobs:
 
       - name: Run ingestion + processing
         run: |
-          python -m scripts.enem_pipeline.ingest_raw_enem --config config/pipeline.yml
-          python -m scripts.enem_pipeline.process_enem --config config/pipeline.yml
+          python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
+          python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
 
       - name: Resolve year and update configs
         shell: bash
@@ -65,7 +65,7 @@ jobs:
           import yaml
           from pathlib import Path
           year = int("$YEAR")
-          for cfg_path in ["config/statistical_tests.yml", "config/causal_trees.yml"]:
+          for cfg_path in ["configs/statistical_tests.yml", "configs/causal_trees.yml"]:
               p = Path(cfg_path)
               cfg = yaml.safe_load(p.read_text())
               cfg["year"] = year
@@ -73,10 +73,10 @@ jobs:
           PY
 
       - name: Run yearly statistical tests
-        run: python -m scripts.enem_pipeline.run_statistical_tests --config config/statistical_tests.yml
+        run: python -m scripts.enem_pipeline.run_statistical_tests --config configs/statistical_tests.yml
 
       - name: Run yearly causal trees
-        run: python -m scripts.enem_pipeline.run_causal_trees --config config/causal_trees.yml
+        run: python -m scripts.enem_pipeline.run_causal_trees --config configs/causal_trees.yml
 
 
       - name: Upload yearly metrics artifacts
