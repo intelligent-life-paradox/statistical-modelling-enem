@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+
 from pathlib import Path
 
 
@@ -12,7 +13,7 @@ from scripts.enem_pipeline.gcs_utils import upload_file
 
 TABLE_FQN = "`basedosdados.br_inep_enem.microdados`"
 
-# Mapeamento exaustivo para o padrão da BasedosDados
+
 ALIASES = {
     "NU_INSCRICAO": ["id_inscricao"],
     "SG_UF_ESC": ["sigla_uf_escola"],
@@ -34,37 +35,48 @@ REQUIRED_CANONICAL_COLUMNS = [
 def _resolve_config_path(config_path: Path) -> Path:
     if config_path.exists(): return config_path
     alt = Path(str(config_path).replace("configs/", "config/", 1))
-    if alt.exists(): return alt
-    raise FileNotFoundError(f"Config não encontrado: {config_path}")
+    return alt if alt.exists() else config_path
 
 def _fetch_available_columns(billing_project_id: str, credentials) -> set[str]:
+    
     schema_query = "SELECT column_name FROM `basedosdados.br_inep_enem.INFORMATION_SCHEMA.COLUMNS` WHERE table_name = 'microdados'"
-    cols = pd.read_gbq(schema_query, project_id=billing_project_id, credentials=credentials, dialect="standard")
-    return set(cols["column_name"].astype(str).tolist())
+    try:
+        cols = pd.read_gbq(schema_query, project_id=billing_project_id, credentials=credentials, dialect="standard")
+        return set(cols["column_name"].astype(str).tolist())
+    except Exception as e:
+        print(f"[ERROR] Falha ao ler esquema: {e}. Tentando nomes padrão...")
+        return set()
 
 def _build_select_list(available_cols: set[str]) -> str:
     select_exprs = []
+    # Se não conseguirmos ler o esquema, assumimos que as colunas existem em minúsculo (padrão BasedosDados)
+    use_fallback = len(available_cols) == 0
+
     for canonical in REQUIRED_CANONICAL_COLUMNS:
-        #Tenta o nome original 
-        if canonical in available_cols:
+        if not use_fallback and canonical in available_cols:
             select_exprs.append(canonical)
-        #Tenta a versão minúscula (padrão BasedosDados para TP_..., Q...)
-        elif canonical.lower() in available_cols:
+        elif not use_fallback and canonical.lower() in available_cols:
+            
             select_exprs.append(f"{canonical.lower()} AS {canonical}")
-        #Tenta os aliases manuais (ex: id_inscricao)
+        
         else:
-            matched = next((a for a in ALIASES.get(canonical, []) if a in available_cols), None)
+            # Tenta aliases manuais ou assume minúsculo como fallback
+            matched = next((a for a in ALIASES.get(canonical, []) if not use_fallback and a in available_cols), None)
             if matched:
                 select_exprs.append(f"{matched} AS {canonical}")
             else:
-                print(f"[WARN] Coluna não encontrada: {canonical}")
+                #=
+                select_exprs.append(f"{ALIASES.get(canonical, [canonical.lower()])[0]} AS {canonical}")
+    
     return ",\n  ".join(select_exprs)
 
+
 def run(config_path: Path) -> None:
-   
+    
     credentials, _ = google.auth.default()
     
     cfg_path = _resolve_config_path(config_path)
+    
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
@@ -78,16 +90,21 @@ def run(config_path: Path) -> None:
     select_list = _build_select_list(available_cols)
 
     for year in years:
-        print(f"[INFO] Baixando ENEM {year}...")
+        print(f" Baixando ENEM {year} do BigQuery...")
         query = f"SELECT {select_list} FROM {TABLE_FQN} WHERE ano = {year}"
         
-        #Uso do pandas_gbq direto para evitar tentativa de abrir navegador
+        
         df = pd.read_gbq(query, project_id=billing_project_id, credentials=credentials, dialect="standard")
 
         output = local_dir / f"enem_raw_{year}.parquet"
         df.to_parquet(output, index=False)
+        #ATUALIZAÇÕES IMPORTANTE:
+        # O erro 404 acontecia aqui por causa do nome do bucket
         uri = upload_file(bucket, output, f"raw/{year}/enem_raw_{year}.parquet")
         print(f"[OK] Ano {year} salvo em {uri} | Linhas: {len(df)}")
+        
+        # Limpeza de memória para não travar o GitHub Actions
+        del df
 
 def main() -> None:
     parser = argparse.ArgumentParser()
