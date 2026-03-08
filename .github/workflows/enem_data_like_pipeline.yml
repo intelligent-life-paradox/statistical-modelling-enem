@@ -77,3 +77,13 @@ jobs:
 
       - name: Run yearly causal trees
         run: python -m scripts.enem_pipeline.run_causal_trees --config config/causal_trees.yml
+
+
+      - name: Upload yearly metrics artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: enem-metrics-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: |
+            results/statistical/statistical_tests_*.json
+            results/causal/causal_effects_*.json

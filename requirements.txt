@@ -15,5 +15,5 @@ openpyxl
 plotly
 basedosdados
 google-cloud-storage
-pyyam
+PyYAML
 streamlit 
