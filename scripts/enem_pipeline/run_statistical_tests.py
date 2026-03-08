@@ -9,7 +9,7 @@ import pandas as pd
 import statsmodels.formula.api as smf
 import yaml
 
-from gcs_utils import download_file
+from scripts.enem_pipeline.gcs_utils import  download_file
 
 
 FORMULA_OLS = (

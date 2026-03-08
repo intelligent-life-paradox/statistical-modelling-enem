@@ -7,7 +7,7 @@ import basedosdados as bd
 import pandas as pd
 import yaml
 
-from gcs_utils import upload_file
+from scripts.enem_pipeline.gcs_utils import upload_file
 
 
 SQL_TEMPLATE = """

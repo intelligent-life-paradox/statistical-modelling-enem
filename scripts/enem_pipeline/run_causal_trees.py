@@ -13,7 +13,7 @@ from econml.dml import CausalForestDML
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.tree import export_text
 
-from gcs_utils import download_file
+from scripts.enem_pipeline.gcs_utils import download_file
 
 
 FEATURES = [
