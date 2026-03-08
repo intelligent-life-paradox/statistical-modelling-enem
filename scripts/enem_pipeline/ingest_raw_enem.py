@@ -12,33 +12,34 @@ from scripts.enem_pipeline.gcs_utils import upload_file
 
 
 SQL_TEMPLATE = """
-SELECT
-  NU_INSCRICAO,
-  TP_FAIXA_ETARIA,
-  TP_SEXO,
-  TP_ESTADO_CIVIL,
-  TP_COR_RACA,
-  TP_NACIONALIDADE,
-  TP_ST_CONCLUSAO,
-  TP_ANO_CONCLUIU,
-  TP_ESCOLA,
-  TP_ENSINO,
-  SG_UF_ESC,
-  TP_DEPENDENCIA_ADM_ESC,
-  TP_LOCALIZACAO_ESC,
-  TP_SIT_FUNC_ESC,
-  Q001,
-  Q002,
-  Q005,
-  Q006,
-  Q024,
-  NU_NOTA_CN,
-  NU_NOTA_CH,
-  NU_NOTA_LC,
-  NU_NOTA_MT,
-  NU_NOTA_REDACAO
+SELECT 
+    id_inscricao AS NU_INSCRICAO,
+    ano AS NU_ANO,
+    sigla_uf_escola AS SG_UF_ESC,
+    nota_mt AS NU_NOTA_MT,
+    nota_ch AS NU_NOTA_CH,
+    nota_lc AS NU_NOTA_LC,
+    nota_cn AS NU_NOTA_CN,
+    nota_redacao AS NU_NOTA_REDACAO,
+    q001 AS Q001,
+    q002 AS Q002,
+    q005 AS Q005,
+    q006 AS Q006,
+    q024 AS Q024,
+    tp_faixa_etaria AS TP_FAIXA_ETARIA,
+    tp_sexo AS TP_SEXO,
+    tp_estado_civil AS TP_ESTADO_CIVIL,
+    tp_cor_raca AS TP_COR_RACA,
+    tp_nacionalidade AS TP_NACIONALIDADE,
+    tp_st_conclusao AS TP_ST_CONCLUSAO,
+    tp_ano_concluiu AS TP_ANO_CONCLUIU,
+    tp_escola AS TP_ESCOLA,
+    tp_ensino AS TP_ENSINO,
+    tp_dependencia_adm_esc AS TP_DEPENDENCIA_ADM_ESC,
+    tp_localizacao_esc AS TP_LOCALIZACAO_ESC,
+    tp_sit_func_esc AS TP_SIT_FUNC_ESC
 FROM `basedosdados.br_inep_enem.microdados`
-WHERE ANO = {year}
+WHERE ano = {year}
 """
 
 
