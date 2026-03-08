@@ -17,3 +17,6 @@ basedosdados
 google-cloud-storage
 PyYAML
 streamlit 
+google-auth
+pandas-gbq
+pyarrow

@@ -72,7 +72,7 @@ def run(config_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Roda OLS e modelo multinível por ano")
-    parser.add_argument("--config", default="config/statistical_tests.yml", type=Path)
+    parser.add_argument("--config", default="configs/statistical_tests.yml", type=Path)
     args = parser.parse_args()
     run(args.config)
 

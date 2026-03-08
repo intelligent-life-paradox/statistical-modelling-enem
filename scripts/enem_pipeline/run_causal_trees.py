@@ -126,7 +126,7 @@ def run(config_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Roda uma árvore causal por tratamento (RENDA e SCORE_CULT_PAIS)")
-    parser.add_argument("--config", default="config/causal_trees.yml", type=Path)
+    parser.add_argument("--config", default="configs/causal_trees.yml", type=Path)
     args = parser.parse_args()
     run(args.config)
 

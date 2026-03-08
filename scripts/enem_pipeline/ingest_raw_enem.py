@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-import basedosdados as bd
+import google.auth
 import pandas as pd
+import basedosdados as bd
 import yaml
 
 from scripts.enem_pipeline.gcs_utils import upload_file
@@ -42,6 +43,8 @@ WHERE ANO = {year}
 
 
 def run(config_path: Path) -> None:
+    credentials, _ = google.auth.default()
+
     with config_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
@@ -51,11 +54,18 @@ def run(config_path: Path) -> None:
     local_dir.mkdir(parents=True, exist_ok=True)
 
     for year in years:
-        print(f"[INFO] Baixando ENEM {year} do BasedosDados...")
-        df = bd.read_sql(SQL_TEMPLATE.format(year=year), billing_project_id=cfg["billing_project_id"])
+        print(f"[INFO] Baixando ENEM {year} do BigQuery via Service Account")
+        
+        df = pd.read_gbq(
+            SQL_TEMPLATE.format(year=year),
+            project_id=cfg["billing_project_id"],
+            credentials=credentials,
+            dialect="standard"
+        )
 
         output = local_dir / f"enem_raw_{year}.parquet"
         df.to_parquet(output, index=False)
+        
         destination = f"raw/{year}/enem_raw_{year}.parquet"
         uri = upload_file(bucket, output, destination)
         print(f"[OK] Ano {year} salvo em {uri}")
@@ -63,7 +73,7 @@ def run(config_path: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingestão de dados brutos ENEM 2014-2019 para GCS")
-    parser.add_argument("--config", default="config/pipeline.yml", type=Path)
+    parser.add_argument("--config", default="configs/pipeline.yml", type=Path)
     args = parser.parse_args()
     run(args.config)
 
