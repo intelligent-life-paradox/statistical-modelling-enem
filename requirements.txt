@@ -13,3 +13,7 @@ patsy
 lightgbm
 openpyxl
 plotly
+basedosdados
+google-cloud-storage
+pyyam
+streamlit 

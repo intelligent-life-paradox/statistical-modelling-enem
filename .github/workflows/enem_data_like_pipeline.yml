@@ -1,0 +1,76 @@
+name: ENEM Data Lake Pipeline (OIDC)
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Ano para análises (ex: 2019)"
+        required: true
+        default: "2019"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  run-enem-pipeline:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run ingestion + processing
+        run: |
+          python -m scripts.enem_pipeline.ingest_raw_enem --config config/pipeline.yml
+          python -m scripts.enem_pipeline.process_enem --config config/pipeline.yml
+
+      - name: Run yearly statistical tests
+        run: |
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          p = Path('config/statistical_tests.yml')
+          cfg = yaml.safe_load(p.read_text())
+          cfg['year'] = int('${{ github.event.inputs.year }}')
+          p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+          PY
+          python -m scripts.enem_pipeline.run_statistical_tests --config config/statistical_tests.yml
+
+      - name: Run yearly causal trees
+        run: |
+          python - <<'PY'
+          import yaml
+          from pathlib import Path
+
+          p = Path('config/causal_trees.yml')
+          cfg = yaml.safe_load(p.read_text())
+          cfg['year'] = int('${{ github.event.inputs.year }}')
+          p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+          PY
+          python -m scripts.enem_pipeline.run_causal_trees --config config/causal_trees.yml
