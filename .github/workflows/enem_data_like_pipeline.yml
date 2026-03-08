@@ -1,6 +1,10 @@
 name: ENEM Data Lake Pipeline (OIDC)
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       year:
@@ -19,6 +23,7 @@ jobs:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+      PIPELINE_YEAR: ${{ vars.PIPELINE_YEAR || '2019' }}
 
     steps:
       - name: Checkout
@@ -49,28 +54,26 @@ jobs:
           python -m scripts.enem_pipeline.ingest_raw_enem --config config/pipeline.yml
           python -m scripts.enem_pipeline.process_enem --config config/pipeline.yml
 
-      - name: Run yearly statistical tests
+      - name: Resolve year and update configs
+        shell: bash
         run: |
-          python - <<'PY'
+          YEAR_INPUT="${{ github.event.inputs.year }}"
+          YEAR="${YEAR_INPUT:-$PIPELINE_YEAR}"
+          echo "Running pipeline for year=$YEAR"
+
+          python - <<PY
           import yaml
           from pathlib import Path
-
-          p = Path('config/statistical_tests.yml')
-          cfg = yaml.safe_load(p.read_text())
-          cfg['year'] = int('${{ github.event.inputs.year }}')
-          p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+          year = int("$YEAR")
+          for cfg_path in ["config/statistical_tests.yml", "config/causal_trees.yml"]:
+              p = Path(cfg_path)
+              cfg = yaml.safe_load(p.read_text())
+              cfg["year"] = year
+              p.write_text(yaml.safe_dump(cfg, sort_keys=False))
           PY
-          python -m scripts.enem_pipeline.run_statistical_tests --config config/statistical_tests.yml
+
+      - name: Run yearly statistical tests
+        run: python -m scripts.enem_pipeline.run_statistical_tests --config config/statistical_tests.yml
 
       - name: Run yearly causal trees
-        run: |
-          python - <<'PY'
-          import yaml
-          from pathlib import Path
-
-          p = Path('config/causal_trees.yml')
-          cfg = yaml.safe_load(p.read_text())
-          cfg['year'] = int('${{ github.event.inputs.year }}')
-          p.write_text(yaml.safe_dump(cfg, sort_keys=False))
-          PY
-          python -m scripts.enem_pipeline.run_causal_trees --config config/causal_trees.yml
+        run: python -m scripts.enem_pipeline.run_causal_trees --config config/causal_trees.yml
