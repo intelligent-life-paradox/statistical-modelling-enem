@@ -1,10 +1,12 @@
 
 from __future__ import annotations
 
+
 import argparse
 import google.auth
 import pandas as pd
 import yaml
+from google.cloud import storage
 from pathlib import Path
 from scripts.enem_pipeline.gcs_utils import upload_file
 
@@ -13,7 +15,7 @@ TABLE_FQN = "`basedosdados.br_inep_enem.microdados`"
 # Colunas canônicas necessárias para os testes estatísticos e causalidade
 REQUIRED_CANONICAL_COLUMNS = [
     "NU_INSCRICAO", "TP_SEXO", "TP_COR_RACA", "TP_ESCOLA", "TP_DEPENDENCIA_ADM_ESC",
-    "TP_LOCALIZACAO_ESC", "TP_SIT_FUNC_ESC", "SG_UF_ESC", "Q001", "Q002", "Q005", 
+    "TP_LOCALIZACAO_ESC", "TP_SIT_FUNC_ESC", "SG_UF_ESC", "Q001", "Q002", "Q005",
     "Q006", "Q024", "NU_NOTA_CN", "NU_NOTA_CH", "NU_NOTA_LC", "NU_NOTA_MT", "NU_NOTA_REDACAO",
 ]
 
@@ -37,28 +39,48 @@ ALIASES = {
 
 }
 
+
 def _resolve_config_path(config_path: Path) -> Path:
-    if config_path.exists(): return config_path
+    if config_path.exists():
+        return config_path
     alt = Path(str(config_path).replace("config/", "configs/", 1))
     return alt if alt.exists() else config_path
 
+
+def _blob_exists(bucket_name: str, blob_path: str, credentials) -> bool:
+    """Verifica se um arquivo já existe no GCS sem baixá-lo."""
+    client = storage.Client(credentials=credentials)
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_path)
+    return blob.exists()
+
+
+
 def _fetch_available_columns(project_id: str, credentials) -> list[str]:
     """Sonda o esquema real da tabela sem abrir navegador."""
+    
     try:
-        # Tenta o probe rápido via SELECT * LIMIT 1
+        
         probe_df = pd.read_gbq(
             f"SELECT * FROM {TABLE_FQN} LIMIT 1",
             project_id=project_id,
             credentials=credentials,
-            dialect="standard"
+            dialect="standard",
         )
         return [str(c) for c in probe_df.columns]
     except Exception as exc:
         print(f"[WARN] Falha no probe rápido: {exc}. Tentando INFORMATION_SCHEMA...")
-        
-    schema_query = f"SELECT column_name FROM `basedosdados.br_inep_enem.INFORMATION_SCHEMA.COLUMNS` WHERE table_name = 'microdados'"
-    cols_df = pd.read_gbq(schema_query, project_id=project_id, credentials=credentials, dialect="standard")
+
+    schema_query = (
+        "SELECT column_name FROM `basedosdados.br_inep_enem.INFORMATION_SCHEMA.COLUMNS`"
+        " WHERE table_name = 'microdados'"
+    )
+    cols_df = pd.read_gbq(
+        schema_query, project_id=project_id, credentials=credentials, dialect="standard"
+    )
     return cols_df["column_name"].astype(str).tolist()
+
+
 
 
 def _match_column(canonical: str, actual_cols: list[str]) -> str | None:
@@ -78,8 +100,11 @@ def _match_column(canonical: str, actual_cols: list[str]) -> str | None:
 def _resolve_year_column(actual_cols: list[str]) -> str:
     for cand in ["ano", "ANO", "nu_ano", "NU_ANO"]:
         for c in actual_cols:
-            if c.lower() == cand.lower(): return c
+            if c.lower() == cand.lower():
+                return c
     raise RuntimeError("Coluna de ano não encontrada no BigQuery.")
+
+
 
 def _build_query(year: int, actual_cols: list[str]) -> str:
     
@@ -88,43 +113,64 @@ def _build_query(year: int, actual_cols: list[str]) -> str:
     for canonical in REQUIRED_CANONICAL_COLUMNS:
         source_col = _match_column(canonical, actual_cols)
         if source_col:
-            select_exprs.append(f"`{source_col}` AS {canonical}" if source_col != canonical else f"`{source_col}`")
-    
+            select_exprs.append(
+                f"`{source_col}` AS {canonical}" if source_col != canonical else f"`{source_col}`"
+            )
     year_col = _resolve_year_column(actual_cols)
     return f"SELECT {', '.join(select_exprs)} FROM {TABLE_FQN} WHERE `{year_col}` = {year}"
 
+
 def run(config_path: Path) -> None:
-    # autenticação via Workload Identity Federation (gitHub actions)
+    # Autenticação via WIF
     credentials, _ = google.auth.default()
-    
+
     cfg_path = _resolve_config_path(config_path)
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-   
     years = cfg["years"]
     bucket = cfg["gcs"]["bucket"]
     billing_project_id = cfg["billing_project_id"]
-    
+
     local_dir = Path(cfg["local"]["raw_dir"])
     local_dir.mkdir(parents=True, exist_ok=True)
 
-    actual_cols = _fetch_available_columns(billing_project_id, credentials)
-    print(f"[INFO] Esquema detectado com {len(actual_cols)} colunas.")
+    # Descobrimos o schema apenas uma vez (evita queries desnecessárias no loop)
+    actual_cols: list[str] | None = None
 
     for year in years:
+        blob_path = f"raw/{year}/enem_raw_{year}.parquet"
+
+        
+        if _blob_exists(bucket, blob_path, credentials):
+            print(f"[SKIP] Ano {year} já existe em gs://{bucket}/{blob_path}. Pulando ingestão.")
+            continue
+        # Carrega schema lazy (só quando for realmente ingerir algum ano)
+        if actual_cols is None:
+            actual_cols = _fetch_available_columns(billing_project_id, credentials)
+            print(f"[INFO] Esquema detectado com {len(actual_cols)} colunas.")
+
         print(f"[INFO] Baixando ENEM {year} via Service Account...")
         query = _build_query(year, actual_cols)
-        
-        df = pd.read_gbq(query, project_id=billing_project_id, credentials=credentials, dialect="standard")
+
+        df = pd.read_gbq(
+            query,
+            project_id=billing_project_id,
+            credentials=credentials,
+            dialect="standard",
+        )
 
         output = local_dir / f"enem_raw_{year}.parquet"
         df.to_parquet(output, index=False)
-        
-        uri = upload_file(bucket, output, f"raw/{year}/enem_raw_{year}.parquet")
+
+        uri = upload_file(bucket, output, blob_path)
         print(f"[OK] Ano {year} salvo em {uri} | Linhas: {len(df)}")
-        
-        del df # Limpeza crucial de memória RAM
+
+        del df  # Limpeza crucial de RAM
+
+    if actual_cols is None:
+        print("[INFO] Todos os anos já estavam no GCS. Nenhuma ingestão necessária.")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
