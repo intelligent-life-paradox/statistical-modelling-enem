@@ -9,64 +9,112 @@ import pandas as pd
 import statsmodels.formula.api as smf
 import yaml
 
-from scripts.enem_pipeline.gcs_utils import  download_file
+from scripts.enem_pipeline.gcs_utils import download_file
 
 
-FORMULA_OLS = (
-    "MEDIA_CANDIDATO ~ SCORE_CULT_PAIS + RENDA + SCORE_CONSUMO + C(INTERNET) + "
-    "C(TP_SEXO) + C(TP_COR_RACA) + C(TP_ESCOLA) "
-)
+def _build_ols_formula(df: pd.DataFrame) -> str | None:
+    """Monta a fórmula OLS com apenas as colunas disponíveis no df."""
+    outcome = "MEDIA_CANDIDATO"
+    if outcome not in df.columns:
+        return None
+
+    continuous = ["SCORE_CULT_PAIS", "RENDA", "SCORE_CONSUMO"]
+    categorical = ["INTERNET", "TP_SEXO", "TP_COR_RACA", "TP_ESCOLA"]
+
+    terms = (
+        [c for c in continuous if c in df.columns]
+        + [f"C({c})" for c in categorical if c in df.columns]
+    )
+    if not terms:
+        return None
+    return f"{outcome} ~ {' + '.join(terms)}"
+
+
+def _build_multilevel_formula(df: pd.DataFrame) -> tuple[str, str] | tuple[None, None]:
+    """Retorna (formula, group_col) ou (None, None) se colunas insuficientes."""
+    outcome = "MEDIA_CANDIDATO"
+    if outcome not in df.columns:
+        return None, None
+
+    predictors = ["SCORE_CULT_PAIS", "SG_UF_ESC", "INTERNET"]
+    available  = [c for c in predictors if c in df.columns]
+    if not available:
+        return None, None
+
+    group_col = "RENDA" if "RENDA" in df.columns else None
+    if group_col is None:
+        return None, None
+
+    return f"{outcome} ~ {' + '.join(available)}", group_col
 
 
 def run(config_path: Path) -> None:
     with config_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    year = cfg["year"]
+    year        = cfg["year"]
     sample_size = cfg.get("sample_size", 1500)
-    seed = cfg.get("random_seed", 42)
-    bucket = cfg["gcs"]["bucket"]
-    source_blob = f"processed/{year}/dados_enem_processados_{year}.parquet"
+    seed        = cfg.get("random_seed", 69)
+    bucket      = cfg["gcs"]["bucket"]  
 
-    local_file = Path("tmp") / f"dados_enem_processados_{year}.parquet"
+    source_blob = f"processed/{year}/dados_enem_processados_{year}.parquet"
+    local_file  = Path("tmp") / f"dados_enem_processados_{year}.parquet"
+    local_file.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"[INFO] Baixando gs://{bucket}/{source_blob}...")
     download_file(bucket, source_blob, local_file)
 
     df = pd.read_parquet(local_file)
+    
+    print(f"[INFO] Parquet carregado: {len(df)} linhas | colunas: {list(df.columns)}")
+
+    
     if len(df) > sample_size:
         df = df.sample(sample_size, random_state=seed)
 
-    ols_model = smf.ols(FORMULA_OLS, data=df).fit()
+    results: dict = {"year": year, "sample_size_used": int(len(df))}
 
-    # Multinível com intercepto aleatório por renda (proxy de classe social)
-    multilevel = smf.mixedlm(
-        "MEDIA_CANDIDATO ~ SCORE_CULT_PAIS + SG_UF_ESC  + INTERNET",
-        data=df,
-        groups=df["RENDA"],
-    ).fit(reml=False)
-
-    results = {
-        "year": year,
-        "sample_size_used": int(len(df)),
-        "ols": {
-            "r2": float(ols_model.rsquared),
-            "adj_r2": float(ols_model.rsquared_adj),
-            "f_stat": float(ols_model.fvalue),
+    # OLS 
+    ols_formula = _build_ols_formula(df)
+    if ols_formula:
+        print(f"[INFO] OLS: {ols_formula}")
+        ols_model = smf.ols(ols_formula, data=df).fit()
+        results["ols"] = {
+            "formula": ols_formula,
+            "r2":      float(ols_model.rsquared),
+            "adj_r2":  float(ols_model.rsquared_adj),
+            "f_stat":  float(ols_model.fvalue),
             "f_pvalue": float(ols_model.f_pvalue),
             "coefficients": {k: float(v) for k, v in ols_model.params.to_dict().items()},
-        },
-        "multilevel": {
-            "aic": float(multilevel.aic),
-            "bic": float(multilevel.bic),
-            "log_likelihood": float(multilevel.llf),
-            "coefficients": {k: float(v) for k, v in multilevel.params.to_dict().items()},
-        },
-    }
+        }
+    else:
+        print("[WARN] Colunas insuficientes para OLS. Pulando.")
+        results["ols"] = None
 
-    out_dir = Path(cfg.get("output_dir", "results/statistical"))
+    #  Multinível 
+    ml_formula, group_col = _build_multilevel_formula(df)
+    if ml_formula:
+        print(f"[INFO] Multinível: {ml_formula} | grupos: {group_col}")
+        multilevel = smf.mixedlm(ml_formula, data=df, groups=df[group_col]).fit(reml=False)
+        results["multilevel"] = {
+            "formula":       ml_formula,
+            "group_by":      group_col,
+            "aic":           float(multilevel.aic),
+            "bic":           float(multilevel.bic),
+            "log_likelihood": float(multilevel.llf),
+            "coefficients":  {k: float(v) for k, v in multilevel.params.to_dict().items()},
+        }
+    else:
+        print("[WARN] Colunas insuficientes para modelo multinível. Pulando.")
+        results["multilevel"] = None
+
+    out_dir  = Path(cfg.get("output_dir", "results/statistical"))
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"statistical_tests_{year}.json"
+    
     out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
-
+    
+    
     print(f"[OK] Resultados salvos em {out_path}")
 
 
