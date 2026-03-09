@@ -53,7 +53,7 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year        = cfg["year"]
-    sample_size = cfg.get("sample_size", 1500)
+    sample_size = cfg.get("sample_size", 5000)
     seed        = cfg.get("random_seed", 69)
     bucket      = cfg["gcs"]["bucket"]  
 
