@@ -26,6 +26,9 @@ COLS_NECESSARIAS = [
 ]
 
 
+CRITICAL_COLS = ["MEDIA_CANDIDATO"]
+
+
 def _safe_read_parquet(path: Path, desired_cols: list[str]) -> pd.DataFrame:
     """Lê apenas as colunas que realmente existem no arquivo."""
     actual_cols = pq.read_schema(path).names
@@ -37,11 +40,12 @@ def _safe_read_parquet(path: Path, desired_cols: list[str]) -> pd.DataFrame:
 
 
 def preprocess(df: pd.DataFrame) -> pd.DataFrame:
+    
     notas = ["NU_NOTA_CN", "NU_NOTA_CH", "NU_NOTA_LC", "NU_NOTA_MT", "NU_NOTA_REDACAO"]
     notas_presentes = [c for c in notas if c in df.columns]
     df["MEDIA_CANDIDATO"] = df[notas_presentes].mean(axis=1) if notas_presentes else pd.NA
 
-    # Campos derivados — só calculados se a coluna-fonte existir
+
     df["RENDA"] = df["Q006"].map(RENDA_MAP) if "Q006" in df.columns else pd.NA
 
     if "Q001" in df.columns and "Q002" in df.columns:
@@ -59,17 +63,23 @@ def preprocess(df: pd.DataFrame) -> pd.DataFrame:
     if "SG_UF_ESC" in df.columns:
         df["SG_UF_ESC"] = df["SG_UF_ESC"].astype("category").cat.codes
 
+
     keep = [
         "NU_INSCRICAO", "TP_SEXO", "TP_COR_RACA", "TP_ESCOLA",
         "TP_DEPENDENCIA_ADM_ESC", "TP_LOCALIZACAO_ESC", "TP_SIT_FUNC_ESC", "SG_UF_ESC",
         "N_PESSOAS_MESMA_RED", "INTERNET", "MEDIA_CANDIDATO", "SCORE_CULT_PAIS", "RENDA",
     ]
+    out = df[[c for c in keep if c in df.columns]]
 
-    out = df[[c for c in keep if c in df.columns]].dropna()
+    
+    critical_present = [c for c in CRITICAL_COLS if c in out.columns]
+    out = out.dropna(subset=critical_present)
 
     if "RENDA" in out.columns and "N_PESSOAS_MESMA_RED" in out.columns:
+        out = out.copy()  
         out["SCORE_CONSUMO"] = (out["RENDA"] / out["N_PESSOAS_MESMA_RED"]).clip(lower=0)
 
+    print(f"[INFO] Linhas após preprocess: {len(out)} | colunas: {list(out.columns)}")
     return out
 
 
@@ -97,6 +107,10 @@ def run(config_path: Path) -> None:
         processed = preprocess(df)
         del df
 
+        if len(processed) == 0:
+            print(f"[WARN] Ano {year}: 0 linhas após processamento. Verifique o parquet raw.")
+            continue
+
         output = local_processed / f"dados_enem_processados_{year}.parquet"
         processed.to_parquet(output, index=False)
 
@@ -108,11 +122,12 @@ def run(config_path: Path) -> None:
 def main() -> None:
     
     parser = argparse.ArgumentParser(description="Processa dados brutos ENEM e salva no GCS")
-    
+   
     parser.add_argument("--config", default="configs/pipeline.yml", type=Path)
     args = parser.parse_args()
     run(args.config)
 
 
 if __name__ == "__main__":
+    
     main()

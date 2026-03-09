@@ -64,11 +64,17 @@ def run(config_path: Path) -> None:
     print(f"[INFO] Baixando gs://{bucket}/{source_blob}...")
     download_file(bucket, source_blob, local_file)
 
+    
     df = pd.read_parquet(local_file)
     
     print(f"[INFO] Parquet carregado: {len(df)} linhas | colunas: {list(df.columns)}")
 
-    
+    if len(df) == 0:
+        raise RuntimeError(
+            f"O parquet processed/{year} está vazio. "
+            "Re-execute o process_enem.py para regenerar o arquivo."
+        )
+
     if len(df) > sample_size:
         df = df.sample(sample_size, random_state=seed)
 
@@ -91,7 +97,7 @@ def run(config_path: Path) -> None:
         print("[WARN] Colunas insuficientes para OLS. Pulando.")
         results["ols"] = None
 
-    #  Multinível 
+    # Multinível 
     ml_formula, group_col = _build_multilevel_formula(df)
     if ml_formula:
         print(f"[INFO] Multinível: {ml_formula} | grupos: {group_col}")
@@ -112,9 +118,10 @@ def run(config_path: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"statistical_tests_{year}.json"
     
+    
     out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
     
-    
+   
     print(f"[OK] Resultados salvos em {out_path}")
 
 
@@ -125,5 +132,8 @@ def main() -> None:
     run(args.config)
 
 
+
 if __name__ == "__main__":
+
+    
     main()
