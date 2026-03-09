@@ -46,8 +46,14 @@ def _build_multilevel_formula(df: pd.DataFrame) -> tuple[str, str] | tuple[None,
     if outcome not in df.columns:
         return None, None
 
+    
     predictors = ["SCORE_CULT_PAIS", "SG_UF_ESC", "INTERNET"]
-    available  = [c for c in predictors if c in df.columns]
+    available = [
+        c for c in predictors
+        if c in df.columns
+        and df[c].notna().any()
+        and _has_min_levels(df, c)
+    ]
     if not available:
         return None, None
 
@@ -63,9 +69,9 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year        = cfg["year"]
-    sample_size = cfg.get("sample_size", 5000)
+    sample_size = cfg.get("sample_size", 5000S)
     seed        = cfg.get("random_seed", 69)
-    bucket      = cfg["gcs"]["bucket"] 
+    bucket      = cfg["gcs"]["bucket"]  
 
     source_blob = f"processed/{year}/dados_enem_processados_{year}.parquet"
     local_file  = Path("tmp") / f"dados_enem_processados_{year}.parquet"
