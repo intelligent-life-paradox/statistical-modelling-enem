@@ -12,18 +12,28 @@ import yaml
 from scripts.enem_pipeline.gcs_utils import download_file
 
 
+def _has_min_levels(df: pd.DataFrame, col: str, min_levels: int = 2) -> bool:
+    """Verifica se a coluna tem pelo menos min_levels valores únicos não-nulos.
+    C(col) no patsy requer >= 2 níveis, senão explode com 'negative dimensions'.
+    """
+    n = df[col].dropna().nunique()
+    if n < min_levels:
+        print(f"[WARN] Coluna '{col}' tem apenas {n} nível(is) único(s) — excluída da fórmula.")
+    return n >= min_levels
+
+
 def _build_ols_formula(df: pd.DataFrame) -> str | None:
-    """Monta a fórmula OLS com apenas as colunas disponíveis no df."""
+    """Monta a fórmula OLS com apenas as colunas disponíveis e com níveis suficientes."""
     outcome = "MEDIA_CANDIDATO"
     if outcome not in df.columns:
         return None
 
-    continuous = ["SCORE_CULT_PAIS", "RENDA", "SCORE_CONSUMO"]
+    continuous  = ["SCORE_CULT_PAIS", "RENDA", "SCORE_CONSUMO"]
     categorical = ["INTERNET", "TP_SEXO", "TP_COR_RACA", "TP_ESCOLA"]
 
     terms = (
-        [c for c in continuous if c in df.columns]
-        + [f"C({c})" for c in categorical if c in df.columns]
+        [c for c in continuous if c in df.columns and df[c].notna().any()]
+        + [f"C({c})" for c in categorical if c in df.columns and _has_min_levels(df, c)]
     )
     if not terms:
         return None
@@ -55,7 +65,7 @@ def run(config_path: Path) -> None:
     year        = cfg["year"]
     sample_size = cfg.get("sample_size", 5000)
     seed        = cfg.get("random_seed", 69)
-    bucket      = cfg["gcs"]["bucket"]  
+    bucket      = cfg["gcs"]["bucket"] 
 
     source_blob = f"processed/{year}/dados_enem_processados_{year}.parquet"
     local_file  = Path("tmp") / f"dados_enem_processados_{year}.parquet"
@@ -64,9 +74,7 @@ def run(config_path: Path) -> None:
     print(f"[INFO] Baixando gs://{bucket}/{source_blob}...")
     download_file(bucket, source_blob, local_file)
 
-    
     df = pd.read_parquet(local_file)
-    
     print(f"[INFO] Parquet carregado: {len(df)} linhas | colunas: {list(df.columns)}")
 
     if len(df) == 0:
@@ -80,7 +88,7 @@ def run(config_path: Path) -> None:
 
     results: dict = {"year": year, "sample_size_used": int(len(df))}
 
-    # OLS 
+   
     ols_formula = _build_ols_formula(df)
     if ols_formula:
         print(f"[INFO] OLS: {ols_formula}")
@@ -97,7 +105,7 @@ def run(config_path: Path) -> None:
         print("[WARN] Colunas insuficientes para OLS. Pulando.")
         results["ols"] = None
 
-    # Multinível 
+    
     ml_formula, group_col = _build_multilevel_formula(df)
     if ml_formula:
         print(f"[INFO] Multinível: {ml_formula} | grupos: {group_col}")
@@ -117,11 +125,7 @@ def run(config_path: Path) -> None:
     out_dir  = Path(cfg.get("output_dir", "results/statistical"))
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"statistical_tests_{year}.json"
-    
-    
     out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
-    
-   
     print(f"[OK] Resultados salvos em {out_path}")
 
 
@@ -132,8 +136,5 @@ def main() -> None:
     run(args.config)
 
 
-
 if __name__ == "__main__":
-
-    
     main()
