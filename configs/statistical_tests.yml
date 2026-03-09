@@ -3,6 +3,6 @@ sample_size: 1500
 random_seed: 69
 
 gcs:
-  bucket: "enem-data-lake"
+  bucket: "enem-lake-joao-luca"
 
 output_dir: "results/statistical"
