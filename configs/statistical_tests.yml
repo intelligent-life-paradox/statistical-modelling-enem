@@ -1,5 +1,5 @@
 year: 2019
-sample_size: 2000 
+sample_size: 50000
 random_seed: 69
 
 gcs:

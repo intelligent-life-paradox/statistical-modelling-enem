@@ -56,7 +56,7 @@ def _build_ols_formula(df: pd.DataFrame) -> str | None:
 def _build_multilevel_formula(df: pd.DataFrame) -> list[tuple[str, str]]:
     """
     Espelha o notebook (cells 26-29):
-    - modelo_2: grupos = SG_UF_ESC
+    - modelo_2: grupos = SCORE_CULT_PAIS
     - modelo_3: grupos = RENDA
     """
     outcome = "MEDIA_CANDIDATO"
@@ -76,8 +76,8 @@ def _build_multilevel_formula(df: pd.DataFrame) -> list[tuple[str, str]]:
     formula = f"{outcome} ~ {' + '.join(all_terms)}"
     models  = []
 
-    if "SG_UF_ESC" in df.columns and df["SG_UF_ESC"].notna().any():
-        models.append((formula, "SG_UF_ESC"))
+    if "SCORE_CULT_PAIS" in df.columns and df["SCORE_CULT_PAIS"].notna().any():
+        models.append((formula, "SCORE_CULT_PAIS"))
 
     if "RENDA" in df.columns and df["RENDA"].notna().any():
         models.append((formula, "RENDA"))
@@ -89,10 +89,11 @@ def run(config_path: Path) -> None:
     with config_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    year        = cfg["year"]
-    sample_size = cfg.get("sample_size", 2000)
-    seed        = cfg.get("random_seed", 69)
-    bucket      = cfg["gcs"]["bucket"]
+    year                 = cfg["year"]
+    sample_size_ols      = cfg.get("sample_size_ols", 2000)
+    sample_size_multilevel = cfg.get("sample_size_multilevel", cfg.get("sample_size", 50000))
+    seed                 = cfg.get("random_seed", 69)
+    bucket               = cfg["gcs"]["bucket"]
 
     source_blob = f"processed/enem_{year}/dados_enem_processados_{year}.parquet"
     local_file  = Path("tmp") / f"dados_enem_processados_{year}.parquet"
@@ -107,36 +108,55 @@ def run(config_path: Path) -> None:
     if len(df) == 0:
         raise RuntimeError(f"Parquet processed/enem_{year} está vazio.")
 
-    #  Amostragem estratificada por TP_COR_RACA 
-    if len(df) > sample_size:
-        strat = "TP_COR_RACA" if "TP_COR_RACA" in df.columns else None
+    # Amostragem estratificada por TP_COR_RACA (mantém proporções por raça)
+    strat = "TP_COR_RACA" if "TP_COR_RACA" in df.columns else None
+
+    def _sample(df: pd.DataFrame, target_size: int) -> pd.DataFrame:
+        if len(df) <= target_size:
+            return df
         if strat:
-            df = (
+            return (
                 df.groupby(strat, group_keys=False)
                 .apply(lambda g: g.sample(
-                    min(len(g), max(1, int(sample_size * len(g) / len(df)))),
+                    min(len(g), max(1, int(target_size * len(g) / len(df)))),
                     random_state=seed,
                 ))
             )
-        else:
-            df = df.sample(sample_size, random_state=seed)
+        return df.sample(target_size, random_state=seed)
 
-    print(f"[INFO] Amostra final: {len(df)} linhas")
+    df_ols = _sample(df, sample_size_ols)
+    df_ml  = _sample(df, sample_size_multilevel)
+
+    print(f"[INFO] Amostra para OLS: {len(df_ols)} linhas (target={sample_size_ols})")
+    print(f"[INFO] Amostra para Multinível: {len(df_ml)} linhas (target={sample_size_multilevel})")
 
     # Normalização
-    df_model = df.copy()
-    scale_cols = [c for c in ["RENDA", "SCORE_CULT_PAIS", "MEDIA_CANDIDATO"]
-                  if c in df_model.columns]
-    scaler = StandardScaler()
-    df_model[scale_cols] = scaler.fit_transform(df_model[scale_cols])
+    df_model_ols = df_ols.copy()
+    df_model_ml  = df_ml.copy()
+    scale_cols_ols = [c for c in ["RENDA", "SCORE_CULT_PAIS", "MEDIA_CANDIDATO"]
+                       if c in df_model_ols.columns]
+    scale_cols_ml  = [c for c in ["RENDA", "SCORE_CULT_PAIS", "MEDIA_CANDIDATO"]
+                       if c in df_model_ml.columns]
 
-    results: dict = {"year": year, "sample_size_used": int(len(df_model))}
+    scaler = StandardScaler()
+    if scale_cols_ols:
+        df_model_ols[scale_cols_ols] = scaler.fit_transform(df_model_ols[scale_cols_ols])
+    if scale_cols_ml:
+        df_model_ml[scale_cols_ml] = scaler.fit_transform(df_model_ml[scale_cols_ml])
+
+    results: dict = {
+        "year": year,
+        "sample_size_used": {
+            "ols": int(len(df_model_ols)),
+            "multilevel": int(len(df_model_ml)),
+        },
+    }
 
     # OLS 
-    ols_formula = _build_ols_formula(df_model)
+    ols_formula = _build_ols_formula(df_model_ols)
     if ols_formula:
         print(f"[INFO] OLS: {ols_formula}")
-        ols_model = smf.ols(ols_formula, data=df_model).fit()
+        ols_model = smf.ols(ols_formula, data=df_model_ols).fit()
         results["ols"] = {
             "formula":      ols_formula,
             "r2":           float(ols_model.rsquared),
@@ -152,10 +172,10 @@ def run(config_path: Path) -> None:
 
     #  Modelos Multiníveis 
     multilevel_results = []
-    for formula, group_col in _build_multilevel_formula(df_model):
+    for formula, group_col in _build_multilevel_formula(df_model_ml):
         print(f"[INFO] Multinível: {formula} | grupos: {group_col}")
         try:
-            ml = smf.mixedlm(formula, data=df_model, groups=df_model[group_col]).fit(reml=False)
+            ml = smf.mixedlm(formula, data=df_model_ml, groups=df_model_ml[group_col]).fit(reml=False)
             multilevel_results.append({
                 "formula":        formula,
                 "group_by":       group_col,
