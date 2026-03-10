@@ -24,7 +24,7 @@ def _has_min_levels(df: pd.DataFrame, col: str, min_levels: int = 2) -> bool:
 def _build_ols_formula(df: pd.DataFrame) -> str | None:
     """
     Espelha o notebook (cell 13):
-    MEDIA_CANDIDATO ~ SCORE_CONSUMO + RENDA + SCORE_CULT_PAIS
+    MEDIA_CANDIDATO ~ RENDA + SCORE_CULT_PAIS
                     + bs(TP_FAIXA_ETARIA, df=5)
                     + C(TP_COR_RACA) + C(INTERNET) + C(TP_ESCOLA)
     """
@@ -35,7 +35,7 @@ def _build_ols_formula(df: pd.DataFrame) -> str | None:
     terms = []
 
     # Contínuas
-    for c in ["SCORE_CONSUMO", "RENDA", "SCORE_CULT_PAIS"]:
+    for c in ["RENDA", "SCORE_CULT_PAIS"]:
         if c in df.columns and df[c].notna().any():
             terms.append(c)
 
@@ -57,7 +57,7 @@ def _build_multilevel_formula(df: pd.DataFrame) -> list[tuple[str, str]]:
     """
     Espelha o notebook (cells 26-29):
     - modelo_2: grupos = SG_UF_ESC
-    - modelo_3: grupos = SCORE_CONSUMO
+    - modelo_3: grupos = RENDA
     """
     outcome = "MEDIA_CANDIDATO"
     if outcome not in df.columns:
@@ -79,8 +79,8 @@ def _build_multilevel_formula(df: pd.DataFrame) -> list[tuple[str, str]]:
     if "SG_UF_ESC" in df.columns and df["SG_UF_ESC"].notna().any():
         models.append((formula, "SG_UF_ESC"))
 
-    if "SCORE_CONSUMO" in df.columns and df["SCORE_CONSUMO"].notna().any():
-        models.append((formula, "SCORE_CONSUMO"))
+    if "RENDA" in df.columns and df["RENDA"].notna().any():
+        models.append((formula, "RENDA"))
 
     return models
 
@@ -90,7 +90,7 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year        = cfg["year"]
-    sample_size = cfg.get("sample_size", 10_000)
+    sample_size = cfg.get("sample_size", 2000)
     seed        = cfg.get("random_seed", 69)
     bucket      = cfg["gcs"]["bucket"]
 
@@ -125,7 +125,7 @@ def run(config_path: Path) -> None:
 
     # Normalização
     df_model = df.copy()
-    scale_cols = [c for c in ["RENDA", "SCORE_CULT_PAIS", "SCORE_CONSUMO", "MEDIA_CANDIDATO"]
+    scale_cols = [c for c in ["RENDA", "SCORE_CULT_PAIS", "MEDIA_CANDIDATO"]
                   if c in df_model.columns]
     scaler = StandardScaler()
     df_model[scale_cols] = scaler.fit_transform(df_model[scale_cols])

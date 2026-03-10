@@ -6,25 +6,38 @@ on:
   workflow_dispatch:
     inputs:
       year:
-        description: "Ano para processar (ex: 2019)"
-        required: true
-        default: "2019"
+        description: "Ano específico (deixe vazio para rodar todos)"
+        required: false
+        default: ""
+      force:
+        description: "Forçar re-processamento mesmo se já existir? (true/false)"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
-  run-enem-pipeline:
+  #job 1: Ingestão + Processamento 
+  ingest-and-process:
     runs-on: ubuntu-latest
-    timeout-minutes: 150  # CSVs grandes precisam de mais tempo
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        year: [2013, 2014, 2015, 2016, 2017, 2018, 2019]
+      fail-fast: false
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
-      PIPELINE_YEAR: ${{ github.event.inputs.year || vars.PIPELINE_YEAR || '2019' }}
+      FORCE: ${{ github.event.inputs.force || 'false' }}
 
     steps:
+      - name: Skip if specific year requested and doesn't match
+        if: ${{ github.event.inputs.year != '' && github.event.inputs.year != toString(matrix.year) }}
+        run: exit 0
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -44,26 +57,133 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
+      - name: Check if processed already exists in GCS
+        id: check_processed
+        shell: bash
+        run: |
+          YEAR=${{ matrix.year }}
+          BUCKET=${{ vars.GCP_PROJECT_ID && 'enem-lake-joao-luca' || 'enem-lake-joao-luca' }}
+          BLOB="processed/enem_${YEAR}/dados_enem_processados_${YEAR}.parquet"
+          FORCE="${{ env.FORCE }}"
+
+          if [ "$FORCE" = "true" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "[INFO] Force=true — re-processando ano $YEAR."
+          elif gsutil -q stat "gs://enem-lake-joao-luca/${BLOB}" 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "[SKIP] processed/enem_${YEAR} já existe no GCS. Pulando Job 1."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "[INFO] processed/enem_${YEAR} não encontrado. Processando..."
+          fi
+
       - name: Install dependencies
+        if: steps.check_processed.outputs.exists == 'false'
         run: pip install -r requirements.txt
 
-      - name: Update pipeline config for single year
+      - name: Configure year ${{ matrix.year }}
+        if: steps.check_processed.outputs.exists == 'false'
         shell: bash
         run: |
           python - <<PY
           import yaml
           from pathlib import Path
-
-          year = int("${{ env.PIPELINE_YEAR }}")
-          print(f"Processando ano: {year}")
-
-          # Atualiza pipeline.yml para processar só esse ano
+          year = ${{ matrix.year }}
           p = Path("configs/pipeline.yml")
           cfg = yaml.safe_load(p.read_text())
           cfg["years"] = [year]
           p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+          PY
 
-          # Atualiza configs dos testes
+      - name: Ingest — CSV to Parquet
+        if: steps.check_processed.outputs.exists == 'false'
+        run: python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
+
+      - name: Free disk after ingest
+        if: steps.check_processed.outputs.exists == 'false'
+        run: rm -rf data/raw/*.csv 2>/dev/null || true
+
+      - name: Process — raw to processed
+        if: steps.check_processed.outputs.exists == 'false'
+        run: python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
+
+      - name: Free all local data after process
+        if: steps.check_processed.outputs.exists == 'false'
+        run: rm -rf data/raw data/processed tmp 2>/dev/null || true
+
+  #job 2: Testes Estatísticos + Causal 
+  run-analyses:
+    needs: ingest-and-process
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        year: [2013, 2014, 2015, 2016, 2017, 2018, 2019]
+      fail-fast: false
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+      FORCE: ${{ github.event.inputs.force || 'false' }}
+
+    steps:
+      - name: Skip if specific year requested and doesn't match
+        if: ${{ github.event.inputs.year != '' && github.event.inputs.year != toString(matrix.year) }}
+        run: exit 0
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Check if results already exist in GCS
+        id: check_results
+        shell: bash
+        run: |
+          YEAR=${{ matrix.year }}
+          FORCE="${{ env.FORCE }}"
+          STAT_BLOB="results/statistical/statistical_tests_${YEAR}.json"
+          CAUSAL_BLOB="results/causal/causal_effects_${YEAR}.json"
+
+          if [ "$FORCE" = "true" ]; then
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "[INFO] Force=true — re-rodando análises para $YEAR."
+          elif gsutil -q stat "gs://enem-lake-joao-luca/${STAT_BLOB}" 2>/dev/null && \
+               gsutil -q stat "gs://enem-lake-joao-luca/${CAUSAL_BLOB}" 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "[SKIP] Resultados de $YEAR já existem no GCS. Pulando Job 2."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "[INFO] Resultados de $YEAR não encontrados. Rodando análises..."
+          fi
+
+      - name: Set up Python
+        if: steps.check_results.outputs.exists == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        if: steps.check_results.outputs.exists == 'false'
+        run: pip install -r requirements.txt
+
+      - name: Configure year ${{ matrix.year }}
+        if: steps.check_results.outputs.exists == 'false'
+        shell: bash
+        run: |
+          python - <<PY
+          import yaml
+          from pathlib import Path
+          year = ${{ matrix.year }}
           for cfg_path in ["configs/statistical_tests.yml", "configs/causal_trees.yml"]:
               p = Path(cfg_path)
               cfg = yaml.safe_load(p.read_text())
@@ -71,23 +191,39 @@ jobs:
               p.write_text(yaml.safe_dump(cfg, sort_keys=False))
           PY
 
-      - name: Convert CSV to Parquet (ingest)
-        run: python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
-
-      - name: Process raw parquet
-        run: python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
-
       - name: Run statistical tests
+        if: steps.check_results.outputs.exists == 'false'
         run: python -m scripts.enem_pipeline.run_statistical_tests --config configs/statistical_tests.yml
 
+      - name: Free memory after statistical tests
+        if: steps.check_results.outputs.exists == 'false'
+        run: rm -rf tmp 2>/dev/null || true
+
       - name: Run causal trees
+        if: steps.check_results.outputs.exists == 'false'
         run: python -m scripts.enem_pipeline.run_causal_trees --config configs/causal_trees.yml
 
+      - name: Upload results to GCS
+        if: steps.check_results.outputs.exists == 'false'
+        shell: bash
+        run: |
+          YEAR=${{ matrix.year }}
+          gsutil cp results/statistical/statistical_tests_${YEAR}.json \
+            gs://enem-lake-joao-luca/results/statistical/statistical_tests_${YEAR}.json || true
+          gsutil cp results/causal/causal_effects_${YEAR}.json \
+            gs://enem-lake-joao-luca/results/causal/causal_effects_${YEAR}.json || true
+
       - name: Upload artifacts
+        if: steps.check_results.outputs.exists == 'false'
         uses: actions/upload-artifact@v4
         with:
-          name: enem-metrics-${{ env.PIPELINE_YEAR }}-${{ github.run_id }}
+          name: enem-metrics-${{ matrix.year }}
+          overwrite: true
           if-no-files-found: warn
           path: |
-            results/statistical/statistical_tests_*.json
-            results/causal/causal_effects_*.json
+            results/statistical/statistical_tests_${{ matrix.year }}.json
+            results/causal/causal_effects_${{ matrix.year }}.json
+
+      - name: Free memory after causal trees
+        if: steps.check_results.outputs.exists == 'false'
+        run: rm -rf tmp 2>/dev/null || true
