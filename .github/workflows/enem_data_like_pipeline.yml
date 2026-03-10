@@ -1,0 +1,89 @@
+name: ENEM Data Lake Pipeline (OIDC)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Ano para análises (ex: 2019)"
+        required: true
+        default: "2019"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  run-enem-pipeline:
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
+      PIPELINE_YEAR: ${{ vars.PIPELINE_YEAR || '2019' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Authenticate to Google Cloud (OIDC)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Setup gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run ingestion + processing
+        run: |
+          python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
+          python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
+
+      - name: Resolve year and update configs
+        shell: bash
+        run: |
+          YEAR_INPUT="${{ github.event.inputs.year }}"
+          YEAR="${YEAR_INPUT:-$PIPELINE_YEAR}"
+          echo "Running pipeline for year=$YEAR"
+
+          python - <<PY
+          import yaml
+          from pathlib import Path
+          year = int("$YEAR")
+          for cfg_path in ["configs/statistical_tests.yml", "configs/causal_trees.yml"]:
+              p = Path(cfg_path)
+              cfg = yaml.safe_load(p.read_text())
+              cfg["year"] = year
+              p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+          PY
+
+      - name: Run yearly statistical tests
+        run: python -m scripts.enem_pipeline.run_statistical_tests --config configs/statistical_tests.yml
+
+      - name: Run yearly causal trees
+        run: python -m scripts.enem_pipeline.run_causal_trees --config configs/causal_trees.yml
+
+
+      - name: Upload yearly metrics artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: enem-metrics-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: warn
+          path: |
+            results/statistical/statistical_tests_*.json
+            results/causal/causal_effects_*.json
