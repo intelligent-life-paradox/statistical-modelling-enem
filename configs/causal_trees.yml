@@ -1,5 +1,5 @@
 year: 2019
-sample_size: 100000
+sample_size: 50000
 random_seed: 69
 tree_max_depth: 3
 treatments: ["RENDA", "SCORE_CULT_PAIS"]

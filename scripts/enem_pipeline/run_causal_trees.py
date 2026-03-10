@@ -105,7 +105,7 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year           = cfg["year"]
-    sample_size    = cfg.get("sample_size", 100_000)
+    sample_size    = cfg.get("sample_size", 50000)
     seed           = cfg.get("random_seed", 69)
     tree_max_depth = cfg.get("tree_max_depth", 3)
     treatments     = cfg.get("treatments", ["RENDA", "SCORE_CULT_PAIS"])

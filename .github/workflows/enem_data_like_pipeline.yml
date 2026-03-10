@@ -3,12 +3,10 @@ name: ENEM Data Lake Pipeline (OIDC)
 on:
   push:
     branches: [master]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
     inputs:
       year:
-        description: "Ano para análises (ex: 2019)"
+        description: "Ano para processar (ex: 2019)"
         required: true
         default: "2019"
 
@@ -19,11 +17,12 @@ permissions:
 jobs:
   run-enem-pipeline:
     runs-on: ubuntu-latest
+    timeout-minutes: 150  # CSVs grandes precisam de mais tempo
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_SERVICE_ACCOUNT_EMAIL: ${{ vars.GCP_SERVICE_ACCOUNT_EMAIL }}
-      PIPELINE_YEAR: ${{ vars.PIPELINE_YEAR || '2019' }}
+      PIPELINE_YEAR: ${{ github.event.inputs.year || vars.PIPELINE_YEAR || '2019' }}
 
     steps:
       - name: Checkout
@@ -48,23 +47,23 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Convert CSVs to Parquet (ingest)
-        run: python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
-
-      - name: Process raw parquets
-        run: python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
-
-      - name: Resolve year and update configs
+      - name: Update pipeline config for single year
         shell: bash
         run: |
-          YEAR_INPUT="${{ github.event.inputs.year }}"
-          YEAR="${YEAR_INPUT:-$PIPELINE_YEAR}"
-          echo "Running pipeline for year=$YEAR"
-
           python - <<PY
           import yaml
           from pathlib import Path
-          year = int("$YEAR")
+
+          year = int("${{ env.PIPELINE_YEAR }}")
+          print(f"Processando ano: {year}")
+
+          # Atualiza pipeline.yml para processar só esse ano
+          p = Path("configs/pipeline.yml")
+          cfg = yaml.safe_load(p.read_text())
+          cfg["years"] = [year]
+          p.write_text(yaml.safe_dump(cfg, sort_keys=False))
+
+          # Atualiza configs dos testes
           for cfg_path in ["configs/statistical_tests.yml", "configs/causal_trees.yml"]:
               p = Path(cfg_path)
               cfg = yaml.safe_load(p.read_text())
@@ -72,16 +71,22 @@ jobs:
               p.write_text(yaml.safe_dump(cfg, sort_keys=False))
           PY
 
-      - name: Run yearly statistical tests
+      - name: Convert CSV to Parquet (ingest)
+        run: python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
+
+      - name: Process raw parquet
+        run: python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
+
+      - name: Run statistical tests
         run: python -m scripts.enem_pipeline.run_statistical_tests --config configs/statistical_tests.yml
 
-      - name: Run yearly causal trees
+      - name: Run causal trees
         run: python -m scripts.enem_pipeline.run_causal_trees --config configs/causal_trees.yml
 
-      - name: Upload yearly metrics artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: enem-metrics-${{ github.run_id }}-${{ github.run_attempt }}
+          name: enem-metrics-${{ env.PIPELINE_YEAR }}-${{ github.run_id }}
           if-no-files-found: warn
           path: |
             results/statistical/statistical_tests_*.json
