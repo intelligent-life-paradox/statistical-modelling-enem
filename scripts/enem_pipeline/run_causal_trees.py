@@ -181,12 +181,14 @@ def estimate_effect(
     if standardize and scale_meta:
         t_std = scale_meta.get(treatment, {}).get("std", 1)
         y_std = scale_meta.get(outcome,   {}).get("std", 1)
-        ate_original = float(np.mean(effects)) * y_std / t_std if t_std else None
+        ate_std    = float(np.mean(effects))          # efeito em std_y / std_t
+        ate_points = ate_std * y_std                  # pontos ENEM por 1 std de treatment
+
         result["ate_interpretation"] = (
             f"Um aumento de 1 desvio-padrão em {treatment} "
-            f"(≈ {t_std:.2f} unidades originais) causa em média "
-            f"{float(np.mean(effects)):.3f} desvios-padrão em {outcome} "
-            f"(≈ {ate_original:.2f} pontos no ENEM)."
+            f"(≈ R$ {t_std:,.0f}) está associado a um aumento médio de "
+            f"{ate_points:.1f} pontos no ENEM "
+            f"({ate_std:.3f} desvios-padrão de {outcome})."
         )
 
     return result
