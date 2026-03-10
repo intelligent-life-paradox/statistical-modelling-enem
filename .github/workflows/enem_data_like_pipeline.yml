@@ -2,9 +2,9 @@ name: ENEM Data Lake Pipeline (OIDC)
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
     inputs:
       year:
@@ -46,13 +46,13 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Run ingestion + processing
-        run: |
-          python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
-          python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
+      - name: Convert CSVs to Parquet (ingest)
+        run: python -m scripts.enem_pipeline.ingest_raw_enem --config configs/pipeline.yml
+
+      - name: Process raw parquets
+        run: python -m scripts.enem_pipeline.process_enem --config configs/pipeline.yml
 
       - name: Resolve year and update configs
         shell: bash
@@ -77,7 +77,6 @@ jobs:
 
       - name: Run yearly causal trees
         run: python -m scripts.enem_pipeline.run_causal_trees --config configs/causal_trees.yml
-
 
       - name: Upload yearly metrics artifacts
         uses: actions/upload-artifact@v4
