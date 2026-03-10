@@ -2,7 +2,7 @@ name: ENEM Data Lake Pipeline (OIDC)
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   workflow_dispatch:
     inputs:
       year:
@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Skip if specific year requested and doesn't match
-        if: ${{ github.event.inputs.year != '' && github.event.inputs.year != toString(matrix.year) }}
+        if: ${{ github.event.inputs.year != '' && github.event.inputs.year != format('{0}', matrix.year) }}
         run: exit 0
 
       - name: Checkout
@@ -111,7 +111,7 @@ jobs:
         if: steps.check_processed.outputs.exists == 'false'
         run: rm -rf data/raw data/processed tmp 2>/dev/null || true
 
-  #job 2: Testes Estatísticos + Causal 
+  # job 2: Testes Estatísticos + Causal 
   run-analyses:
     needs: ingest-and-process
     runs-on: ubuntu-latest
@@ -128,7 +128,7 @@ jobs:
 
     steps:
       - name: Skip if specific year requested and doesn't match
-        if: ${{ github.event.inputs.year != '' && github.event.inputs.year != toString(matrix.year) }}
+        if: ${{ github.event.inputs.year != '' && github.event.inputs.year != format('{0}', matrix.year) }}
         run: exit 0
 
       - name: Checkout
