@@ -154,7 +154,7 @@ def estimate_effect(
     )
 
     # Intervalo de confiança do ATE
-    ate_inf, ate_point, ate_sup = model.ate_interval(x, alpha=0.05)
+    ate_inf, ate_sup = model.ate_interval(x, alpha=0.05)
 
     result = {
         "treatment":           treatment,
