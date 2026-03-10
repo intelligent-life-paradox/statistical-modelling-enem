@@ -112,7 +112,7 @@ def run(config_path: Path) -> None:
     bucket         = cfg["gcs"]["bucket"]  
 
     
-    source_blob = f"processed/{year}/dados_enem_processados_{year}.parquet"
+    source_blob = f"processed/enem_{year}/dados_enem_processados_{year}.parquet"
     local_file  = Path("tmp") / f"dados_enem_processados_{year}.parquet"
     local_file.parent.mkdir(parents=True, exist_ok=True)
 

@@ -7,61 +7,82 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
+from sklearn.preprocessing import StandardScaler
 import yaml
 
 from scripts.enem_pipeline.gcs_utils import download_file
 
 
 def _has_min_levels(df: pd.DataFrame, col: str, min_levels: int = 2) -> bool:
-    """Verifica se a coluna tem pelo menos min_levels valores únicos não-nulos.
-    C(col) no patsy requer >= 2 níveis, senão explode com 'negative dimensions'.
-    """
+    """Garante >= 2 níveis para evitar 'negative dimensions' no patsy."""
     n = df[col].dropna().nunique()
     if n < min_levels:
-        print(f"[WARN] Coluna '{col}' tem apenas {n} nível(is) único(s) — excluída da fórmula.")
+        print(f"[WARN] '{col}' tem {n} nível(is) único(s) — excluída da fórmula.")
     return n >= min_levels
 
 
 def _build_ols_formula(df: pd.DataFrame) -> str | None:
-    """Monta a fórmula OLS com apenas as colunas disponíveis e com níveis suficientes."""
+    """
+    Espelha o notebook (cell 13):
+    MEDIA_CANDIDATO ~ SCORE_CONSUMO + RENDA + SCORE_CULT_PAIS
+                    + bs(TP_FAIXA_ETARIA, df=5)
+                    + C(TP_COR_RACA) + C(INTERNET) + C(TP_ESCOLA)
+    """
     outcome = "MEDIA_CANDIDATO"
     if outcome not in df.columns:
         return None
 
-    continuous  = ["SCORE_CULT_PAIS", "RENDA", "SCORE_CONSUMO"]
-    categorical = ["INTERNET", "TP_SEXO", "TP_COR_RACA", "TP_ESCOLA"]
+    terms = []
 
-    terms = (
-        [c for c in continuous if c in df.columns and df[c].notna().any()]
-        + [f"C({c})" for c in categorical if c in df.columns and _has_min_levels(df, c)]
-    )
+    # Contínuas
+    for c in ["SCORE_CONSUMO", "RENDA", "SCORE_CULT_PAIS"]:
+        if c in df.columns and df[c].notna().any():
+            terms.append(c)
+
+    # Spline em TP_FAIXA_ETARIA (se disponível)
+    if "TP_FAIXA_ETARIA" in df.columns and df["TP_FAIXA_ETARIA"].notna().any():
+        terms.append("bs(TP_FAIXA_ETARIA, df=5)")
+
+    # Categóricas
+    for c in ["TP_COR_RACA", "INTERNET", "TP_ESCOLA"]:
+        if c in df.columns and _has_min_levels(df, c):
+            terms.append(f"C({c})")
+
     if not terms:
         return None
     return f"{outcome} ~ {' + '.join(terms)}"
 
 
-def _build_multilevel_formula(df: pd.DataFrame) -> tuple[str, str] | tuple[None, None]:
-    """Retorna (formula, group_col) ou (None, None) se colunas insuficientes."""
+def _build_multilevel_formula(df: pd.DataFrame) -> list[tuple[str, str]]:
+    """
+    Espelha o notebook (cells 26-29):
+    - modelo_2: grupos = SG_UF_ESC
+    - modelo_3: grupos = SCORE_CONSUMO
+    """
     outcome = "MEDIA_CANDIDATO"
     if outcome not in df.columns:
-        return None, None
+        return []
 
-    
-    predictors = ["SCORE_CULT_PAIS", "SG_UF_ESC", "INTERNET"]
-    available = [
-        c for c in predictors
-        if c in df.columns
-        and df[c].notna().any()
-        and _has_min_levels(df, c)
-    ]
-    if not available:
-        return None, None
+    predictors  = ["RENDA", "SCORE_CULT_PAIS"]
+    categorical = ["TP_COR_RACA", "INTERNET", "TP_ESCOLA"]
 
-    group_col = "RENDA" if "RENDA" in df.columns else None
-    if group_col is None:
-        return None, None
+    cont_terms = [c for c in predictors if c in df.columns and df[c].notna().any()]
+    cat_terms  = [f"C({c})" for c in categorical if c in df.columns and _has_min_levels(df, c)]
+    all_terms  = cont_terms + cat_terms
 
-    return f"{outcome} ~ {' + '.join(available)}", group_col
+    if not all_terms:
+        return []
+
+    formula = f"{outcome} ~ {' + '.join(all_terms)}"
+    models  = []
+
+    if "SG_UF_ESC" in df.columns and df["SG_UF_ESC"].notna().any():
+        models.append((formula, "SG_UF_ESC"))
+
+    if "SCORE_CONSUMO" in df.columns and df["SCORE_CONSUMO"].notna().any():
+        models.append((formula, "SCORE_CONSUMO"))
+
+    return models
 
 
 def run(config_path: Path) -> None:
@@ -69,11 +90,11 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year        = cfg["year"]
-    sample_size = cfg.get("sample_size", 5000S)
+    sample_size = cfg.get("sample_size", 10_000)
     seed        = cfg.get("random_seed", 69)
-    bucket      = cfg["gcs"]["bucket"]  
+    bucket      = cfg["gcs"]["bucket"]
 
-    source_blob = f"processed/{year}/dados_enem_processados_{year}.parquet"
+    source_blob = f"processed/enem_{year}/dados_enem_processados_{year}.parquet"
     local_file  = Path("tmp") / f"dados_enem_processados_{year}.parquet"
     local_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -81,52 +102,73 @@ def run(config_path: Path) -> None:
     download_file(bucket, source_blob, local_file)
 
     df = pd.read_parquet(local_file)
-    print(f"[INFO] Parquet carregado: {len(df)} linhas | colunas: {list(df.columns)}")
+    print(f"[INFO] Carregado: {len(df)} linhas | colunas: {list(df.columns)}")
 
     if len(df) == 0:
-        raise RuntimeError(
-            f"O parquet processed/{year} está vazio. "
-            "Re-execute o process_enem.py para regenerar o arquivo."
-        )
+        raise RuntimeError(f"Parquet processed/enem_{year} está vazio.")
 
+    #  Amostragem estratificada por TP_COR_RACA 
     if len(df) > sample_size:
-        df = df.sample(sample_size, random_state=seed)
+        strat = "TP_COR_RACA" if "TP_COR_RACA" in df.columns else None
+        if strat:
+            df = (
+                df.groupby(strat, group_keys=False)
+                .apply(lambda g: g.sample(
+                    min(len(g), max(1, int(sample_size * len(g) / len(df)))),
+                    random_state=seed,
+                ))
+            )
+        else:
+            df = df.sample(sample_size, random_state=seed)
 
-    results: dict = {"year": year, "sample_size_used": int(len(df))}
+    print(f"[INFO] Amostra final: {len(df)} linhas")
 
-   
-    ols_formula = _build_ols_formula(df)
+    # Normalização
+    df_model = df.copy()
+    scale_cols = [c for c in ["RENDA", "SCORE_CULT_PAIS", "SCORE_CONSUMO", "MEDIA_CANDIDATO"]
+                  if c in df_model.columns]
+    scaler = StandardScaler()
+    df_model[scale_cols] = scaler.fit_transform(df_model[scale_cols])
+
+    results: dict = {"year": year, "sample_size_used": int(len(df_model))}
+
+    # OLS 
+    ols_formula = _build_ols_formula(df_model)
     if ols_formula:
         print(f"[INFO] OLS: {ols_formula}")
-        ols_model = smf.ols(ols_formula, data=df).fit()
+        ols_model = smf.ols(ols_formula, data=df_model).fit()
         results["ols"] = {
-            "formula": ols_formula,
-            "r2":      float(ols_model.rsquared),
-            "adj_r2":  float(ols_model.rsquared_adj),
-            "f_stat":  float(ols_model.fvalue),
-            "f_pvalue": float(ols_model.f_pvalue),
+            "formula":      ols_formula,
+            "r2":           float(ols_model.rsquared),
+            "adj_r2":       float(ols_model.rsquared_adj),
+            "f_stat":       float(ols_model.fvalue),
+            "f_pvalue":     float(ols_model.f_pvalue),
             "coefficients": {k: float(v) for k, v in ols_model.params.to_dict().items()},
+            "pvalues":      {k: float(v) for k, v in ols_model.pvalues.to_dict().items()},
         }
     else:
-        print("[WARN] Colunas insuficientes para OLS. Pulando.")
+        print("[WARN] Colunas insuficientes para OLS.")
         results["ols"] = None
 
-    
-    ml_formula, group_col = _build_multilevel_formula(df)
-    if ml_formula:
-        print(f"[INFO] Multinível: {ml_formula} | grupos: {group_col}")
-        multilevel = smf.mixedlm(ml_formula, data=df, groups=df[group_col]).fit(reml=False)
-        results["multilevel"] = {
-            "formula":       ml_formula,
-            "group_by":      group_col,
-            "aic":           float(multilevel.aic),
-            "bic":           float(multilevel.bic),
-            "log_likelihood": float(multilevel.llf),
-            "coefficients":  {k: float(v) for k, v in multilevel.params.to_dict().items()},
-        }
-    else:
-        print("[WARN] Colunas insuficientes para modelo multinível. Pulando.")
-        results["multilevel"] = None
+    #  Modelos Multiníveis 
+    multilevel_results = []
+    for formula, group_col in _build_multilevel_formula(df_model):
+        print(f"[INFO] Multinível: {formula} | grupos: {group_col}")
+        try:
+            ml = smf.mixedlm(formula, data=df_model, groups=df_model[group_col]).fit(reml=False)
+            multilevel_results.append({
+                "formula":        formula,
+                "group_by":       group_col,
+                "aic":            float(ml.aic),
+                "bic":            float(ml.bic),
+                "log_likelihood": float(ml.llf),
+                "coefficients":   {k: float(v) for k, v in ml.params.to_dict().items()},
+                "pvalues":        {k: float(v) for k, v in ml.pvalues.to_dict().items()},
+            })
+        except Exception as e:
+            print(f"[WARN] Multinível com grupos={group_col} falhou: {e}")
+
+    results["multilevel"] = multilevel_results if multilevel_results else None
 
     out_dir  = Path(cfg.get("output_dir", "results/statistical"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -136,7 +178,7 @@ def run(config_path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Roda OLS e modelo multinível por ano")
+    parser = argparse.ArgumentParser()
     parser.add_argument("--config", default="configs/statistical_tests.yml", type=Path)
     args = parser.parse_args()
     run(args.config)
