@@ -281,7 +281,7 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year               = cfg["year"]
-    sample_size        = cfg.get("sample_size", 500_000)
+    sample_size        = cfg.get("sample_size", 200_000)
     seed               = cfg.get("random_seed", 69)
     tree_max_depth     = cfg.get("tree_max_depth", 3)
     tree_min_samples   = cfg.get("tree_min_samples_leaf", 200)
