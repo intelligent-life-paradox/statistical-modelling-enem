@@ -16,6 +16,8 @@ forest_min_samples_leaf: 100
 
 model_n_estimators: 500
 
+adaptive_cv_threshold: 0.5
+
 treatments:
   - RENDA
   - SCORE_CULT_PAIS

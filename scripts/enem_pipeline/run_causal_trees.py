@@ -10,7 +10,6 @@ import pandas as pd
 import yaml
 from econml.cate_interpreter import SingleTreeCateInterpreter
 from econml.dml import CausalForestDML
-
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.tree import export_text
 
@@ -128,10 +127,10 @@ def _cate_leaf_stats(
 
     Ordenado por ATE decrescente (grupo de maior efeito primeiro).
     """
-    
+    # efeitos individuais do forest (τ̂ por observação)
     effects = model.effect(x)
 
- 
+    # índice de folha para cada observação segundo a árvore interpretativa
     leaf_ids = interpreter.tree_model_.apply(x)
 
     stats = []
@@ -158,6 +157,127 @@ def _cate_leaf_stats(
     return sorted(stats, key=lambda s: s["ate"], reverse=True)
 
 
+def _refine_high_cv_leaves(
+    model: CausalForestDML,
+    interpreter: SingleTreeCateInterpreter,
+    x: np.ndarray,
+    df_features: pd.DataFrame,
+    feature_names: list[str],
+    tree_min_samples_leaf: int,
+    cv_threshold: float = 0.5,
+    standardize_meta: dict | None = None,
+) -> list[dict]:
+    """
+    Refinamento adaptativo das folhas com CV > cv_threshold.
+
+    Para cada folha da árvore base com coeficiente de variação alto
+    (std / |ate| > cv_threshold), treina uma sub-árvore local com
+    max_depth=1 usando apenas as observações daquela folha.
+
+    Isso equivale a um split adicional localizado, sem alterar a árvore
+    global (que permanece com tree_max_depth=3).
+
+    Retorna lista unificada de folhas (base + sub-folhas refinadas),
+    ordenada por ATE decrescente. Folhas com CV <= cv_threshold são
+    mantidas intactas. Folhas refinadas recebem o campo
+    `refined=True` e `parent_leaf_id`.
+    """
+    effects  = model.effect(x)
+    leaf_ids = interpreter.tree_model_.apply(x)
+
+    unified: list[dict] = []
+
+    for leaf_id in np.unique(leaf_ids):
+        mask         = leaf_ids == leaf_id
+        leaf_effects = effects[mask]
+        n_leaf       = int(mask.sum())
+        ate          = float(leaf_effects.mean())
+        std          = float(leaf_effects.std())
+        se           = std / np.sqrt(n_leaf) if n_leaf > 1 else float("nan")
+        cv           = std / abs(ate) if ate != 0 else None
+
+        base_stat = {
+            "leaf_id":   int(leaf_id),
+            "n":         n_leaf,
+            "ate":       round(ate, 5),
+            "std":       round(std, 5),
+            "se":        round(se, 5),
+            "ci_lower":  round(ate - 1.96 * se, 5),
+            "ci_upper":  round(ate + 1.96 * se, 5),
+            "cv":        round(cv, 4) if cv is not None else None,
+            "refined":   False,
+        }
+
+        # se CV ok, a gente  mantém folha original
+        if cv is None or cv <= cv_threshold or n_leaf < tree_min_samples_leaf * 2:
+            unified.append(base_stat)
+            continue
+
+        #sub-árvore local com max_depth=1 
+        x_leaf      = x[mask]
+        eff_leaf    = leaf_effects
+
+        # min_samples_leaf da sub-árvore: metade do mínimo global, mas >= 100
+        sub_min_leaf = max(100, tree_min_samples_leaf // 2)
+
+        sub_interp = SingleTreeCateInterpreter(
+            max_depth=1,
+            min_samples_leaf=sub_min_leaf,
+            include_model_uncertainty=False,
+        )
+        try:
+            sub_interp.interpret(model, x_leaf)
+            sub_leaf_ids = sub_interp.tree_model_.apply(x_leaf)
+        except Exception as exc:
+            print(f"       [WARN] Refinamento da folha {leaf_id} falhou ({exc}). Mantendo original.")
+            unified.append(base_stat)
+            continue
+
+        n_sub_leaves = len(np.unique(sub_leaf_ids))
+
+        # se a sub-árvore não conseguiu dividir, mantém original
+        if n_sub_leaves <= 1:
+            print(f"       [WARN] Folha {leaf_id}: sub-árvore não dividiu (n={n_leaf}). Mantendo.")
+            unified.append(base_stat)
+            continue
+
+        print(f"       [REFINE] Folha {leaf_id} (cv={cv:.3f}) → {n_sub_leaves} sub-folhas")
+        sub_rules = export_text(sub_interp.tree_model_, feature_names=feature_names)
+
+        for sub_id in np.unique(sub_leaf_ids):
+            sub_mask    = sub_leaf_ids == sub_id
+            sub_effects = eff_leaf[sub_mask]
+            ns          = int(sub_mask.sum())
+            s_ate       = float(sub_effects.mean())
+            s_std       = float(sub_effects.std())
+            s_se        = s_std / np.sqrt(ns) if ns > 1 else float("nan")
+            s_cv        = s_std / abs(s_ate) if s_ate != 0 else None
+
+            flag = "  cv>1" if s_cv and s_cv > 1 else ""
+            print(
+                f"         sub-folha {sub_id} | n={ns:>7,} | "
+                f"ate={s_ate:+.4f} | std={s_std:.4f} | cv={s_cv:.3f}{flag}"
+            )
+
+            unified.append({
+                "leaf_id":        int(leaf_id) * 100 + int(sub_id),  # id único
+                "parent_leaf_id": int(leaf_id),
+                "sub_leaf_id":    int(sub_id),
+                "n":              ns,
+                "ate":            round(s_ate, 5),
+                "std":            round(s_std, 5),
+                "se":             round(s_se,  5),
+                "ci_lower":       round(s_ate - 1.96 * s_se, 5),
+                "ci_upper":       round(s_ate + 1.96 * s_se, 5),
+                "cv":             round(s_cv, 4) if s_cv is not None else None,
+                "refined":        True,
+                "sub_tree_rules": sub_rules,
+            })
+
+    return sorted(unified, key=lambda s: s["ate"], reverse=True)
+
+
+
 def estimate_effect(
     df: pd.DataFrame,
     treatment: str,
@@ -169,6 +289,7 @@ def estimate_effect(
     forest_min_samples_leaf: int,
     standardize: bool,
     outcome: str = "MEDIA_CANDIDATO",
+    cfg_adaptive_cv: float | None = 0.5,
 ) -> dict[str, Any] | None:
 
     if outcome not in df.columns:
@@ -205,27 +326,49 @@ def estimate_effect(
     )
     effects = model.effect(x)
 
-    # Árvore interpretativa + estatísticas por folha
+    
     interpreter = _build_interpreter(
         model=model,
         x=x,
         max_depth=tree_max_depth,
         min_samples_leaf=tree_min_samples_leaf,
     )
-    rules      = _causal_tree_rules(interpreter, feature_names=x_cols)
-    leaf_stats = _cate_leaf_stats(model, interpreter, x)
+    rules = _causal_tree_rules(interpreter, feature_names=x_cols)
 
-    # log resumido das folhas
+    # Refinamento adaptativo: só para RENDA, folhas com cv > 0.5 recebem
+    # um split adicional via sub-árvore local (max_depth=1).
+    # SCORE_CULT_PAIS usa _cate_leaf_stats padrão (sem refinamento)
+    #Por que isso? Bom, durante a rodagem de testes, percebi que a heterogeneidade em grupos dessa variável era muito grande.
+    #Enquanto que para SCORE_CULT_PAIS, a heterogeneidade intra-grupal é bem menor. 
+    cv_threshold = cfg_adaptive_cv if treatment == "RENDA" else None
+
+    if cv_threshold is not None:
+        print(f"[INFO] Refinamento adaptativo ativado para {treatment} (cv_threshold={cv_threshold})")
+        leaf_stats = _refine_high_cv_leaves(
+            model=model,
+            interpreter=interpreter,
+            x=x,
+            df_features=df[x_cols],
+            feature_names=x_cols,
+            tree_min_samples_leaf=tree_min_samples_leaf,
+            cv_threshold=cv_threshold,
+            standardize_meta=scale_meta if standardize else None,
+        )
+    else:
+        leaf_stats = _cate_leaf_stats(model, interpreter, x)
+
+    
     print(f"[INFO] Folhas da árvore ({treatment}): {len(leaf_stats)} grupos")
     for ls in leaf_stats:
-        flag = "  cv>1 (heterogeneidade interna alta)" if ls["cv"] and ls["cv"] > 1 else ""
+        flag = " cv>1 (heterogeneidade interna alta)" if ls["cv"] and ls["cv"] > 1 else ""
+        refined_tag = " [REFINADA]" if ls.get("refined") else ""
         print(
-            f"       folha {ls['leaf_id']:>3} | n={ls['n']:>7,} | "
+            f"       folha {ls['leaf_id']:>5} | n={ls['n']:>7,} | "
             f"ate={ls['ate']:+.4f} | std={ls['std']:.4f} | "
-            f"cv={ls['cv']:.3f}{flag}"
+            f"cv={ls['cv']:.3f}{flag}{refined_tag}"
         )
 
-   
+    
     ate_inf, ate_sup = model.ate_interval(x, alpha=0.05)
 
     result = {
@@ -249,10 +392,12 @@ def estimate_effect(
         "n":                     int(len(df)),
         # Árvore + estatísticas por folha
         "tree_rules":            rules,
+        "adaptive_refinement":   cv_threshold is not None,
+        "adaptive_cv_threshold": cv_threshold,
         "leaf_stats":            leaf_stats,
     }
 
-    # Interpretação
+    # Interpretação em linguagem natural
     if standardize and scale_meta:
         t_std      = scale_meta.get(treatment, {}).get("std", 1)
         y_std      = scale_meta.get(outcome,   {}).get("std", 1)
@@ -281,15 +426,18 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year               = cfg["year"]
-    sample_size        = cfg.get("sample_size", 200_000)
+    sample_size        = cfg.get("sample_size", 100_000)
     seed               = cfg.get("random_seed", 69)
-    tree_max_depth     = cfg.get("tree_max_depth", 3)
+    tree_max_depth     = cfg.get("tree_max_depth", 4)
     tree_min_samples   = cfg.get("tree_min_samples_leaf", 200)
-    n_estimators       = cfg.get("n_estimators", 1500)
+    n_estimators       = cfg.get("n_estimators", 2000)
     model_n_estimators = cfg.get("model_n_estimators", 500)
     forest_min_samples = cfg.get("forest_min_samples_leaf", 150)
     treatments         = cfg.get("treatments", ["RENDA", "SCORE_CULT_PAIS"])
     standardize        = cfg.get("standardize_treatment", True)
+    # adaptive_cv: threshold de cv para refinamento adaptativo (só RENDA).
+    # None desabilita o refinamento. Default 0.5 (folhas com cv>0.5 são subdivididas).
+    adaptive_cv        = cfg.get("adaptive_cv_threshold", 0.5)
     bucket             = cfg["gcs"]["bucket"]
 
     source_blob = f"processed/enem_{year}/dados_enem_processados_{year}.parquet"
@@ -334,6 +482,7 @@ def run(config_path: Path) -> None:
             model_n_estimators=model_n_estimators,
             forest_min_samples_leaf=forest_min_samples,
             standardize=standardize,
+            cfg_adaptive_cv=adaptive_cv,
         )
         if result is not None:
             all_effects.append(result)
