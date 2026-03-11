@@ -10,8 +10,8 @@ import pandas as pd
 import yaml
 from econml.cate_interpreter import SingleTreeCateInterpreter
 from econml.dml import CausalForestDML
+
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.preprocessing import StandardScaler
 from sklearn.tree import export_text
 
 from scripts.enem_pipeline.gcs_utils import download_file
@@ -84,20 +84,78 @@ def _fit_causal_model(
     return model
 
 
-def _causal_tree_rules(
+def _build_interpreter(
     model: CausalForestDML,
     x: np.ndarray,
-    feature_names: list[str],
     max_depth: int,
     min_samples_leaf: int,
-) -> str:
+) -> SingleTreeCateInterpreter:
+    """Treina e retorna o interpretador de árvore única."""
     interpreter = SingleTreeCateInterpreter(
         max_depth=max_depth,
         min_samples_leaf=min_samples_leaf,
         include_model_uncertainty=False,
     )
     interpreter.interpret(model, x)
+    return interpreter
+
+
+def _causal_tree_rules(
+    interpreter: SingleTreeCateInterpreter,
+    feature_names: list[str],
+) -> str:
     return export_text(interpreter.tree_model_, feature_names=feature_names)
+
+
+def _cate_leaf_stats(
+    model: CausalForestDML,
+    interpreter: SingleTreeCateInterpreter,
+    x: np.ndarray,
+) -> list[dict]:
+    """
+    Para cada folha da árvore interpretativa, calcula estatísticas dos
+    efeitos individuais estimados pelo Causal Forest:
+
+      - n            : observações na folha
+      - ate          : ATE médio da folha (média dos τ̂(x_i))
+      - std          : desvio-padrão dos efeitos individuais dentro da folha
+      - se           : erro-padrão do ATE da folha (std / √n)
+      - ci_lower/upper: IC 95% do ATE da folha
+      - cv           : coeficiente de variação (std / |ate|)
+                       > 1.0 → heterogeneidade interna alta, folha candidata
+                               a mais particionamento
+                       < 0.5 → folha relativamente homogênea
+
+    Ordenado por ATE decrescente (grupo de maior efeito primeiro).
+    """
+    
+    effects = model.effect(x)
+
+ 
+    leaf_ids = interpreter.tree_model_.apply(x)
+
+    stats = []
+    for leaf_id in np.unique(leaf_ids):
+        mask = leaf_ids == leaf_id
+        leaf_effects = effects[mask]
+        n   = int(mask.sum())
+        ate = float(leaf_effects.mean())
+        std = float(leaf_effects.std())
+        se  = std / np.sqrt(n) if n > 1 else float("nan")
+
+        stats.append({
+            "leaf_id":   int(leaf_id),
+            "n":         n,
+            "ate":       round(ate, 5),
+            "std":       round(std, 5),
+            "se":        round(se, 5),
+            "ci_lower":  round(ate - 1.96 * se, 5),
+            "ci_upper":  round(ate + 1.96 * se, 5),
+            # cv > 1 → std maior que o ATE médio: heterogeneidade interna alta
+            "cv":        round(std / abs(ate), 4) if ate != 0 else None,
+        })
+
+    return sorted(stats, key=lambda s: s["ate"], reverse=True)
 
 
 def estimate_effect(
@@ -137,6 +195,7 @@ def estimate_effect(
     t = df[treatment].astype(float).to_numpy()
     y = df[outcome].astype(float).to_numpy()
 
+    
     model = _fit_causal_model(
         y=y, t=t, x=x,
         random_seed=random_seed,
@@ -146,43 +205,59 @@ def estimate_effect(
     )
     effects = model.effect(x)
 
-    rules = _causal_tree_rules(
-        model, x=x,
-        feature_names=x_cols,
+    # Árvore interpretativa + estatísticas por folha
+    interpreter = _build_interpreter(
+        model=model,
+        x=x,
         max_depth=tree_max_depth,
         min_samples_leaf=tree_min_samples_leaf,
     )
+    rules      = _causal_tree_rules(interpreter, feature_names=x_cols)
+    leaf_stats = _cate_leaf_stats(model, interpreter, x)
 
-    # Intervalo de confiança do ATE
+    # log resumido das folhas
+    print(f"[INFO] Folhas da árvore ({treatment}): {len(leaf_stats)} grupos")
+    for ls in leaf_stats:
+        flag = "  cv>1 (heterogeneidade interna alta)" if ls["cv"] and ls["cv"] > 1 else ""
+        print(
+            f"       folha {ls['leaf_id']:>3} | n={ls['n']:>7,} | "
+            f"ate={ls['ate']:+.4f} | std={ls['std']:.4f} | "
+            f"cv={ls['cv']:.3f}{flag}"
+        )
+
+   
     ate_inf, ate_sup = model.ate_interval(x, alpha=0.05)
 
     result = {
-        "treatment":           treatment,
-        "outcome":             outcome,
-        "standardized":        standardize,
-        "scale_meta":          scale_meta,
-        "features_used":       x_cols,
-        "tree_type":           "SingleTreeCateInterpreter",
-        "tree_max_depth":      tree_max_depth,
+        "treatment":             treatment,
+        "outcome":               outcome,
+        "standardized":          standardize,
+        "scale_meta":            scale_meta,
+        "features_used":         x_cols,
+        "tree_type":             "SingleTreeCateInterpreter",
+        "tree_max_depth":        tree_max_depth,
         "tree_min_samples_leaf": tree_min_samples_leaf,
-        # ATE e IC 95%
-        "ate":                 float(np.mean(effects)),
-        "ate_ci_lower":        float(ate_inf),
-        "ate_ci_upper":        float(ate_sup),
-        "effect_std":          float(np.std(effects)),
-        "effect_p10":          float(np.quantile(effects, 0.10)),
-        "effect_p50":          float(np.quantile(effects, 0.50)),
-        "effect_p90":          float(np.quantile(effects, 0.90)),
-        "n":                   int(len(df)),
-        "tree_rules":          rules,
+        # ATE global
+        "ate":                   float(np.mean(effects)),
+        "ate_ci_lower":          float(ate_inf),
+        "ate_ci_upper":          float(ate_sup),
+        # Distribuição dos efeitos individuais (amostra inteira)
+        "effect_std":            float(np.std(effects)),
+        "effect_p10":            float(np.quantile(effects, 0.10)),
+        "effect_p50":            float(np.quantile(effects, 0.50)),
+        "effect_p90":            float(np.quantile(effects, 0.90)),
+        "n":                     int(len(df)),
+        # Árvore + estatísticas por folha
+        "tree_rules":            rules,
+        "leaf_stats":            leaf_stats,
     }
 
-    # Interpretação em linguagem natural
+    # Interpretação
     if standardize and scale_meta:
-        t_std = scale_meta.get(treatment, {}).get("std", 1)
-        y_std = scale_meta.get(outcome,   {}).get("std", 1)
-        ate_std    = float(np.mean(effects))          # efeito em std_y / std_t
-        ate_points = ate_std * y_std                  # pontos ENEM por 1 std de treatment
+        t_std      = scale_meta.get(treatment, {}).get("std", 1)
+        y_std      = scale_meta.get(outcome,   {}).get("std", 1)
+        ate_std    = float(np.mean(effects))
+        ate_points = ate_std * y_std
 
         result["ate_interpretation"] = (
             f"Um aumento de 1 desvio-padrão em {treatment} "
@@ -191,6 +266,13 @@ def estimate_effect(
             f"({ate_std:.3f} desvios-padrão de {outcome})."
         )
 
+        # interpretação por folha em pontos do ENEM
+        for ls in result["leaf_stats"]:
+            ls["ate_pts"]      = round(ls["ate"]      * y_std, 2)
+            ls["std_pts"]      = round(ls["std"]      * y_std, 2)
+            ls["ci_lower_pts"] = round(ls["ci_lower"] * y_std, 2)
+            ls["ci_upper_pts"] = round(ls["ci_upper"] * y_std, 2)
+
     return result
 
 
@@ -198,17 +280,17 @@ def run(config_path: Path) -> None:
     with config_path.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    year                 = cfg["year"]
-    sample_size          = cfg.get("sample_size", 500_000)
-    seed                 = cfg.get("random_seed", 69)
-    tree_max_depth       = cfg.get("tree_max_depth", 3)
-    tree_min_samples     = cfg.get("tree_min_samples_leaf", 200)
-    n_estimators         = cfg.get("n_estimators", 1500)
-    model_n_estimators   = cfg.get("model_n_estimators", 500)
-    forest_min_samples   = cfg.get("forest_min_samples_leaf", 150)
-    treatments           = cfg.get("treatments", ["RENDA", "SCORE_CULT_PAIS"])
-    standardize          = cfg.get("standardize_treatment", True)
-    bucket               = cfg["gcs"]["bucket"]
+    year               = cfg["year"]
+    sample_size        = cfg.get("sample_size", 500_000)
+    seed               = cfg.get("random_seed", 69)
+    tree_max_depth     = cfg.get("tree_max_depth", 3)
+    tree_min_samples   = cfg.get("tree_min_samples_leaf", 200)
+    n_estimators       = cfg.get("n_estimators", 1500)
+    model_n_estimators = cfg.get("model_n_estimators", 500)
+    forest_min_samples = cfg.get("forest_min_samples_leaf", 150)
+    treatments         = cfg.get("treatments", ["RENDA", "SCORE_CULT_PAIS"])
+    standardize        = cfg.get("standardize_treatment", True)
+    bucket             = cfg["gcs"]["bucket"]
 
     source_blob = f"processed/enem_{year}/dados_enem_processados_{year}.parquet"
     local_file  = Path("tmp") / f"dados_enem_processados_{year}.parquet"
@@ -239,11 +321,11 @@ def run(config_path: Path) -> None:
 
     print(f"[INFO] Amostra: {len(df)} linhas | standardize={standardize}")
 
-    effects = []
+    all_effects = []
     for treatment in treatments:
-        print(f"\n[INFO] Estimando efeito causal: treatment={treatment}")
+        print(f"\n[INFO] ── Estimando efeito causal: treatment={treatment} ──")
         result = estimate_effect(
-            df=df.copy(),  # copy para que cada tratamento tenha sua própria escala
+            df=df.copy(),
             treatment=treatment,
             random_seed=seed,
             tree_max_depth=tree_max_depth,
@@ -254,22 +336,22 @@ def run(config_path: Path) -> None:
             standardize=standardize,
         )
         if result is not None:
-            effects.append(result)
-            print(f"[OK] ATE={result['ate']:.4f} | IC95=[{result['ate_ci_lower']:.4f}, {result['ate_ci_upper']:.4f}]")
+            all_effects.append(result)
+            print(f"[OK] ATE={result['ate']:.4f} | IC95=[{result['ate_ci_lower']:.4f}, {result['ate_ci_upper']:.4f}] | effect_std={result['effect_std']:.4f}")
             if "ate_interpretation" in result:
                 print(f"[OK] {result['ate_interpretation']}")
 
-    results = {
+    output = {
         "year":             year,
         "sample_size_used": int(len(df)),
         "standardized":     standardize,
-        "effects":          effects,
+        "effects":          all_effects,
     }
 
     out_dir  = Path(cfg.get("output_dir", "results/causal"))
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"causal_effects_{year}.json"
-    out_path.write_text(json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"\n[OK] Resultados salvos em {out_path}")
 
 

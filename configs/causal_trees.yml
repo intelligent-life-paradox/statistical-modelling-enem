@@ -6,7 +6,7 @@ random_seed: 69
 standardize_treatment: true
 
 
-tree_max_depth: 4
+tree_max_depth: 3
 tree_min_samples_leaf: 200
 
 
