@@ -199,13 +199,13 @@ def run(config_path: Path) -> None:
         cfg = yaml.safe_load(f)
 
     year                 = cfg["year"]
-    sample_size          = cfg.get("sample_size", 100_000)
+    sample_size          = cfg.get("sample_size", 500_000)
     seed                 = cfg.get("random_seed", 69)
     tree_max_depth       = cfg.get("tree_max_depth", 3)
-    tree_min_samples     = cfg.get("tree_min_samples_leaf", 500)
-    n_estimators         = cfg.get("n_estimators", 300)
-    model_n_estimators   = cfg.get("model_n_estimators", 200)
-    forest_min_samples   = cfg.get("forest_min_samples_leaf", 20)
+    tree_min_samples     = cfg.get("tree_min_samples_leaf", 200)
+    n_estimators         = cfg.get("n_estimators", 1500)
+    model_n_estimators   = cfg.get("model_n_estimators", 500)
+    forest_min_samples   = cfg.get("forest_min_samples_leaf", 150)
     treatments           = cfg.get("treatments", ["RENDA", "SCORE_CULT_PAIS"])
     standardize          = cfg.get("standardize_treatment", True)
     bucket               = cfg["gcs"]["bucket"]

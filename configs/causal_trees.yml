@@ -1,21 +1,20 @@
 year: 2019
-sample_size: 100000
+sample_size: 500000
 random_seed: 69
 
-# Padroniza treatment e outcome para desvio-padrão
-# ATE interpretado como: "1 std de treatment -> X std de outcome"
+
 standardize_treatment: true
 
 
-
-tree_max_depth: 3
-tree_min_samples_leaf: 500   
-
+tree_max_depth: 4
+tree_min_samples_leaf: 200
 
 
-n_estimators: 300
-model_n_estimators: 200
-forest_min_samples_leaf: 20
+n_estimators: 1500
+forest_min_samples_leaf: 100
+
+
+model_n_estimators: 500
 
 treatments:
   - RENDA
