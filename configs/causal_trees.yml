@@ -1,26 +1,20 @@
 year: 2019
-sample_size: 200000
+sample_size: 300000
 random_seed: 69
 
 
-standardize_treatment: true
 
 
 tree_max_depth: 3
 tree_min_samples_leaf: 200
 
 
-n_estimators: 1500
-forest_min_samples_leaf: 100
-
-
-model_n_estimators: 500
-
 adaptive_cv_threshold: 0.5
 
-treatments:
-  - RENDA
-  - SCORE_CULT_PAIS
+
+n_estimators: 1500
+forest_min_samples_leaf: 150
+model_n_estimators: 500
 
 output_dir: "results/causal"
 
