@@ -192,7 +192,7 @@ jobs:
           PY
 
       - name: Run statistical tests
-        if: steps.check_results.outputs.exists == 'False'
+        if: steps.check_results.outputs.exists == 'True'
         run: python -m scripts.enem_pipeline.run_statistical_tests --config configs/statistical_tests.yml
 
       - name: Free memory after statistical tests
