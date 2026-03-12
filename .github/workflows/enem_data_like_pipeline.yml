@@ -192,7 +192,7 @@ jobs:
           PY
 
       - name: Run statistical tests
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'False'
         run: python -m scripts.enem_pipeline.run_statistical_tests --config configs/statistical_tests.yml
 
       - name: Free memory after statistical tests
@@ -200,7 +200,7 @@ jobs:
         run: rm -rf tmp 2>/dev/null || true
 
       - name: Run causal trees
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'False'
         run: python -m scripts.enem_pipeline.run_causal_trees --config configs/causal_trees.yml
 
       - name: Upload results to GCS
@@ -214,7 +214,7 @@ jobs:
             gs://enem-lake-joao-luca/results/causal/causal_effects_${YEAR}.json || true
 
       - name: Upload artifacts
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'False'
         uses: actions/upload-artifact@v4
         with:
           name: enem-metrics-${{ matrix.year }}

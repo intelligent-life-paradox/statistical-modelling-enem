@@ -1,0 +1,100 @@
+{
+  "year": 2017,
+  "scale_meta": {
+    "RENDA": {
+      "mean": 2750.502872589254,
+      "std": 3857.108669872813,
+      "std_robust_brl": 1664.32,
+      "ate_per_1k_factor": 0.600846
+    },
+    "SCORE_CULT_PAIS": {
+      "mean": 5.701264458368449,
+      "std": 4.18594935605924
+    },
+    "MEDIA_CANDIDATO": {
+      "mean": 524.6445647221917,
+      "std": 74.28569363418917
+    }
+  },
+  "sample_size_used": {
+    "full": 1309968,
+    "rlm": 1997
+  },
+  "rlm": {
+    "formula": "MEDIA_CANDIDATO ~ RENDA + SCORE_CULT_PAIS + bs(TP_FAIXA_ETARIA, df=5) + C(TP_COR_RACA) + C(INTERNET) + C(TP_ESCOLA)",
+    "estimator": "RLM (Huber M-estimator)",
+    "scale": 0.7695721779607326,
+    "coefficients": {
+      "Intercept": {
+        "coef_std": -0.026975,
+        "pvalue": 0.868562
+      },
+      "C(TP_COR_RACA)[T.1]": {
+        "coef_std": -0.208727,
+        "pvalue": 0.118399
+      },
+      "C(TP_COR_RACA)[T.2]": {
+        "coef_std": -0.220835,
+        "pvalue": 0.116956
+      },
+      "C(TP_COR_RACA)[T.3]": {
+        "coef_std": -0.365646,
+        "pvalue": 0.005943
+      },
+      "C(TP_COR_RACA)[T.4]": {
+        "coef_std": -0.596458,
+        "pvalue": 0.000683
+      },
+      "C(TP_COR_RACA)[T.5]": {
+        "coef_std": -0.61173,
+        "pvalue": 0.02576
+      },
+      "C(INTERNET)[T.1.0]": {
+        "coef_std": 0.214906,
+        "pvalue": 1e-06
+      },
+      "C(TP_ESCOLA)[T.3]": {
+        "coef_std": 0.599294,
+        "pvalue": 0.0
+      },
+      "C(TP_ESCOLA)[T.4]": {
+        "coef_std": 1.917113,
+        "pvalue": 0.000713
+      },
+      "RENDA": {
+        "coef_std": 0.154057,
+        "pvalue": 0.0,
+        "coef_original_units": 0.002967,
+        "original_units_label": "pontos ENEM por 1 unidade de RENDA",
+        "coef_per_1k_brl": 2.967,
+        "per_1k_label": "pontos ENEM por R$1.000 de renda"
+      },
+      "SCORE_CULT_PAIS": {
+        "coef_std": 0.168911,
+        "pvalue": 0.0,
+        "coef_original_units": 2.997572,
+        "original_units_label": "pontos ENEM por 1 unidade de SCORE_CULT_PAIS"
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[0]": {
+        "coef_std": 0.141523,
+        "pvalue": 0.567901
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[1]": {
+        "coef_std": 0.185616,
+        "pvalue": 0.138744
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[2]": {
+        "coef_std": -1.077771,
+        "pvalue": 0.00073
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[3]": {
+        "coef_std": -0.419691,
+        "pvalue": 0.431529
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[4]": {
+        "coef_std": 0.212511,
+        "pvalue": 0.672656
+      }
+    }
+  }
+}

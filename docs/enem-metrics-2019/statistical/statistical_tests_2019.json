@@ -1,0 +1,96 @@
+{
+  "year": 2019,
+  "scale_meta": {
+    "RENDA": {
+      "mean": 2677.2083193584695,
+      "std": 3844.3148168323714,
+      "std_robust_brl": 1664.32,
+      "ate_per_1k_factor": 0.600846
+    },
+    "SCORE_CULT_PAIS": {
+      "mean": 5.7758496988484715,
+      "std": 4.1585099571334805
+    },
+    "MEDIA_CANDIDATO": {
+      "mean": 527.2157315827578,
+      "std": 80.824173371163
+    }
+  },
+  "sample_size_used": {
+    "full": 921297,
+    "rlm": 1997
+  },
+  "rlm": {
+    "formula": "MEDIA_CANDIDATO ~ RENDA + SCORE_CULT_PAIS + bs(TP_FAIXA_ETARIA, df=5) + C(TP_COR_RACA) + C(INTERNET) + C(TP_ESCOLA)",
+    "estimator": "RLM (Huber M-estimator)",
+    "scale": 0.8065259416044998,
+    "coefficients": {
+      "Intercept": {
+        "coef_std": -0.331947,
+        "pvalue": 0.080377
+      },
+      "C(TP_COR_RACA)[T.1]": {
+        "coef_std": 0.25045,
+        "pvalue": 0.0653
+      },
+      "C(TP_COR_RACA)[T.2]": {
+        "coef_std": -0.011374,
+        "pvalue": 0.936597
+      },
+      "C(TP_COR_RACA)[T.3]": {
+        "coef_std": 0.07714,
+        "pvalue": 0.566811
+      },
+      "C(TP_COR_RACA)[T.4]": {
+        "coef_std": -0.049566,
+        "pvalue": 0.78557
+      },
+      "C(TP_COR_RACA)[T.5]": {
+        "coef_std": -0.363603,
+        "pvalue": 0.19986
+      },
+      "C(INTERNET)[T.1]": {
+        "coef_std": 0.190235,
+        "pvalue": 0.0001
+      },
+      "C(TP_ESCOLA)[T.3]": {
+        "coef_std": 0.658626,
+        "pvalue": 0.0
+      },
+      "RENDA": {
+        "coef_std": 0.174696,
+        "pvalue": 0.0,
+        "coef_original_units": 0.003673,
+        "original_units_label": "pontos ENEM por 1 unidade de RENDA",
+        "coef_per_1k_brl": 3.6729,
+        "per_1k_label": "pontos ENEM por R$1.000 de renda"
+      },
+      "SCORE_CULT_PAIS": {
+        "coef_std": 0.229024,
+        "pvalue": 0.0,
+        "coef_original_units": 4.451273,
+        "original_units_label": "pontos ENEM por 1 unidade de SCORE_CULT_PAIS"
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[0]": {
+        "coef_std": -0.628067,
+        "pvalue": 0.033389
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[1]": {
+        "coef_std": 0.316937,
+        "pvalue": 0.058892
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[2]": {
+        "coef_std": -1.340498,
+        "pvalue": 0.000122
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[3]": {
+        "coef_std": 0.358009,
+        "pvalue": 0.565948
+      },
+      "bs(TP_FAIXA_ETARIA, df=5)[4]": {
+        "coef_std": -0.905936,
+        "pvalue": 0.11364
+      }
+    }
+  }
+}
