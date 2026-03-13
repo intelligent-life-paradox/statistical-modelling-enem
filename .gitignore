@@ -29,3 +29,4 @@ dados/microdados_enem_2019/dados_enem_processados.csv
 !dados/microdados_enem_2019/readme.md
 
 *.log
+.env

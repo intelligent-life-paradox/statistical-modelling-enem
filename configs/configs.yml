@@ -1,0 +1,9 @@
+billing_project_id: "${GCP_BILLING_PROJECT_ID}"
+years: [2014, 2015, 2016, 2017, 2018, 2019]
+
+gcs:
+  bucket: "${GCS_BUCKET_NAME}"
+
+local:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
