@@ -8,7 +8,7 @@
 
 ## Sobre o projeto
 
-Este projeto investiga os fatores que influenciam as notas dos candidatos do ENEM utilizando abordagens estatísticas avançadas. O foco central é **isolar o efeito causal da renda familiar** sobre o desempenho acadêmico, controlando por variáveis sociodemográficas e estruturais.
+Este projeto investiga os fatores que influenciam as notas dos candidatos do ENEM utilizando abordagens estatísticas avançadas. O foco central é **isolar o efeito causal da renda familiar e do capital cultural** sobre o desempenho acadêmico, controlando por variáveis sociodemográficas e estruturais.
 
 ---
 
@@ -68,11 +68,9 @@ Todos os ATEs significativos a p < 0,001. Distribuição dos efeitos individuais
 O modelo RLM se verificou com significância alta (p < 0,001) para renda, capital cultural, tipo de escola e raça (especificamente negros e pardos) ao longo dos anos.
 
 ### Screenshots do app
-
-![Análise anual 2015](images/screenshot_2015.png)
-![Análise anual 2016](images/screenshot_2016.png)
-![Análise anual 2017](images/screenshot_2017.png)
-![Análise anual 2018](images/screenshot_2018.png)
+![Pipeline no github actions](images/app_enem_03.png)
+![Heterogeneidade do efeito causal — folhas da árvore CATE](images/app_enem_01.png)
+![Grupos mais vs menos afetados — padrão transversal](images/app_enem_02.png)
 
 ---
 
