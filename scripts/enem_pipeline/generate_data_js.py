@@ -2,19 +2,19 @@
 Gera docs/data.js a partir dos JSONs de resultado do pipeline.
 
 Uso:
-    python scripts/generate_data_js.py
+    python scripts/enem_pipeline/generate_data_js.py
 
 Lê:
-    docs/metricas-{year}-enem/metricas_causais.json
-    docs/metricas-{year}-enem/metricas_estatisticas.json
+    docs/enem-metrics-{year}/causal/causal_effects_{year}.json
+    docs/enem-metrics-{year}/statistical/statistical_tests_{year}.json
 
 Escreve:
     docs/data.js
-    teste
 """
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -29,6 +29,60 @@ YEAR_CONTEXTS = {
     2019: "Último ano da série. Renda média cai para R$2.685 — segunda mais baixa. ATE causal atinge máximo histórico (0,289σ ≈ 23,3 pts). A winsorização IQR pode estar influenciando mais neste ano dado o IC mais amplo.",
 }
 
+#
+FEATURE_LABELS = {
+    "INTERNET":               {True:  "sem internet",          False: "com internet"},
+    "TP_SEXO":                {True:  "masculino",             False: "feminino"},
+    "TP_COR_RACA":            {True:  "raça branca",           False: "raça não-branca"},
+    "TP_DEPENDENCIA_ADM_ESC": {True:  "dep. pública",          False: "dep. federal/privada"},
+    "TP_ESCOLA":              {True:  "escola pública",        False: "escola privada/federal"},
+    "TP_LOCALIZACAO_ESC":     {True:  "zona rural",            False: "zona urbana"},
+    "SCORE_CULT_PAIS":        {True:  "capital cultural baixo",False: "capital cultural alto"},
+    "TP_SIT_FUNC_ESC":        {True:  "escola ativa",          False: "escola inativa"},
+}
+
+
+def parse_tree_to_paths(tree_rules_text: str) -> dict[float, str]:
+    """
+    Parses tree_rules text from SingleTreeCateInterpreter.
+    Returns dict: rounded_ate -> descriptive path string.
+    """
+    lines = tree_rules_text.strip().split("\n")
+    stack: list[tuple[int, str]] = []
+    paths: dict[float, str] = {}
+
+    for line in lines:
+        depth = line.count("|   ")
+        raw   = line.replace("|   ", "").replace("|--- ", "").strip()
+
+        if raw.startswith("value:"):
+            val = re.search(r"\[([\d.]+)\]", raw)
+            if val:
+                ate = float(val.group(1))
+                path_parts = [c for d, c in stack if d < depth]
+                paths[round(ate, 2)] = " · ".join(path_parts) if path_parts else "—"
+        else:
+            m = re.match(r"(\w+)\s*([<>]=?)\s*([\d.]+)", raw)
+            if m:
+                feat, op, _ = m.group(1), m.group(2), float(m.group(3))
+                is_le  = "<=" in op
+                labels = FEATURE_LABELS.get(feat, {})
+                label  = labels.get(is_le, f"{feat} {op}")
+                stack  = [(d, c) for d, c in stack if d < depth]
+                stack.append((depth, label))
+
+    return paths
+
+
+def match_leaf_to_path(leaf_ate: float, paths: dict[float, str]) -> str:
+    """Matches a leaf ATE to the closest parsed path by value."""
+    if not paths:
+        return f"Folha (ATE={leaf_ate:.3f})"
+    closest = min(paths.keys(), key=lambda k: abs(k - leaf_ate))
+    if abs(closest - leaf_ate) > 0.05:
+        return f"Folha (ATE={leaf_ate:.3f})"
+    return paths[closest]
+
 
 def load_json(path: Path) -> dict:
     if not path.exists():
@@ -39,9 +93,7 @@ def load_json(path: Path) -> dict:
 
 def extract_causal(raw: dict) -> dict | None:
     effects = raw.get("effects", [])
-    if not effects:
-        return None
-    return effects[0]
+    return effects[0] if effects else None
 
 
 def build_year(year: int) -> dict | None:
@@ -69,33 +121,25 @@ def build_year(year: int) -> dict | None:
     p50        = causal.get("effect_p50", 0.0)
     p90        = causal.get("effect_p90", 0.0)
 
+    # parse tree rules to get descriptive leaf names
+    tree_rules = causal.get("tree_rules", "")
+    paths      = parse_tree_to_paths(tree_rules)
+
     # RLM
-    rlm        = stat_raw.get("rlm", {}) or {}
-    rlm_coefs  = rlm.get("coefficients", {})
-    rlm_scale  = rlm.get("scale", 1.0)
+    rlm       = stat_raw.get("rlm", {}) or {}
+    rlm_coefs = rlm.get("coefficients", {})
+    rlm_scale = rlm.get("scale", 1.0)
 
-    def get_beta(key: str) -> float:
-        entry = rlm_coefs.get(key, {})
-        return entry.get("coef_std", 0.0)
-
-    def get_pval(key: str) -> float | None:
-        entry = rlm_coefs.get(key, {})
-        v = entry.get("pvalue")
-        return v if v is not None else None
-
-    def get_per1k(key: str) -> float:
-        entry = rlm_coefs.get(key, {})
-        return entry.get("coef_per_1k_brl", 0.0)
-
-    def get_pts(key: str) -> float:
-        entry = rlm_coefs.get(key, {})
-        return entry.get("coef_original_units", get_beta(key) * std_enem)
+    def get_beta(key): return rlm_coefs.get(key, {}).get("coef_std", 0.0)
+    def get_pval(key): return rlm_coefs.get(key, {}).get("pvalue", None)
+    def get_per1k(key): return rlm_coefs.get(key, {}).get("coef_per_1k_brl", 0.0)
+    def get_pts(key): return rlm_coefs.get(key, {}).get("coef_original_units",
+                                                         get_beta(key) * std_enem)
 
     rlm_beta  = get_beta("RENDA")
     rlm_per1k = get_per1k("RENDA")
 
-    # build rlm_coefs list for display — mirrors hardcoded structure
-    def coef_entry(label: str, key: str | None, note: str) -> list:
+    def coef_entry(label, key, note):
         if key is None:
             return [label, None, None, note]
         b = get_beta(key)
@@ -105,7 +149,7 @@ def build_year(year: int) -> dict | None:
         return [label, round(b, 4), p, note]
 
     rlm_coefs_display = [
-        coef_entry("Renda",            "RENDA",           f"+{rlm_per1k:.3f} pts/R$1k"),
+        coef_entry("Renda",            "RENDA",            f"+{rlm_per1k:.3f} pts/R$1k"),
         coef_entry("Capital cultural", "SCORE_CULT_PAIS",  "+{:.3f} pts/un.".format(get_pts("SCORE_CULT_PAIS"))),
         coef_entry("Internet (sim)",   "C(INTERNET)[T.1]", "vs. sem internet"),
         coef_entry("Escola federal",   "C(TP_ESCOLA)[T.3]","vs. pública (T=3)"),
@@ -113,29 +157,29 @@ def build_year(year: int) -> dict | None:
         ["Idade (spline)",             None, None,          "controlada"],
     ]
 
-    # leaves
-    leaf_stats = causal.get("leaf_stats", [])
-    leaves_out = []
-    for ls in leaf_stats:
-        leaf_ate    = ls.get("ate", 0.0)
-        leaf_std    = ls.get("std", 0.0)
-        leaf_se     = ls.get("se",  0.0)
-        leaf_cv     = ls.get("cv",  0.0) or 0.0
-        leaf_n      = ls.get("n",   0)
-        leaf_per1k  = ls.get("ate_per_1k_pts", leaf_ate * per1k_factor * std_enem)
-        # group label: prefer refined sub_tree_rules summary, fallback to leaf_id
-        group = ls.get("group", f"Folha {ls.get('leaf_id','?')}")
+    # build leaves with descriptive names from tree_rules
+    leaf_stats  = causal.get("leaf_stats", [])
+    leaves_out  = []
+    for ls in sorted(leaf_stats, key=lambda x: x.get("ate", 0), reverse=True):
+        leaf_ate   = ls.get("ate", 0.0)
+        leaf_std   = ls.get("std", 0.0)
+        leaf_se    = ls.get("se",  0.0)
+        leaf_cv    = ls.get("cv",  0.0) or 0.0
+        leaf_n     = ls.get("n",   0)
+        leaf_per1k = ls.get("ate_per_1k_pts", leaf_ate * per1k_factor * std_enem)
+        group      = match_leaf_to_path(leaf_ate, paths)
+
         leaves_out.append({
-            "group":      group,
-            "ate":        round(leaf_ate,  4),
-            "std":        round(leaf_std,  4),
-            "se":         round(leaf_se,   5),
-            "cv":         round(leaf_cv,   3),
-            "n":          leaf_n,
-            "per1k_pts":  round(leaf_per1k, 2),
+            "group":     group,
+            "ate":       round(leaf_ate,  4),
+            "std":       round(leaf_std,  4),
+            "se":        round(leaf_se,   5),
+            "cv":        round(leaf_cv,   3),
+            "n":         leaf_n,
+            "per1k_pts": round(leaf_per1k, 2),
         })
 
-    stat_meta = stat_raw.get("scale_meta", {})
+    stat_meta  = stat_raw.get("scale_meta", {})
     renda_meta = stat_meta.get("RENDA", scale_r)
 
     return {
@@ -169,17 +213,17 @@ def main() -> None:
     for year in YEARS:
         data = build_year(year)
         if data is None:
-            print(f"[SKIP] {year}: dados incompletos — ano omitido do data.js")
             continue
         entries.append(f"  {year}: {json.dumps(data, ensure_ascii=False)}")
         ok += 1
         print(f"[OK]   {year}: ate={data['ate']:.4f} | folhas={len(data['leaves'])}")
 
     if ok == 0:
-        print("[ERROR] Nenhum ano processado. Verifique se os JSONs estão em docs/metricas-{year}-enem/")
+        print("[ERROR] Nenhum ano processado.")
         sys.exit(1)
 
-    js = "// gerado automaticamente por scripts/generate_data_js.py — não edite\nconst D = {\n"
+    js  = "// gerado automaticamente por scripts/enem_pipeline/generate_data_js.py\n"
+    js += "const D = {\n"
     js += ",\n".join(entries)
     js += "\n};\n"
 
