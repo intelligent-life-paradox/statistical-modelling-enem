@@ -248,7 +248,7 @@ jobs:
           python-version: "3.11"
 
       - name: Generate data.js
-        run: python scripts/generate_data_js.py
+        run: python scripts/enem_pipeline/generate_data_js.py
 
       - name: Commit and push updated docs
         run: |
