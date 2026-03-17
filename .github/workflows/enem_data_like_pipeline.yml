@@ -19,7 +19,6 @@ permissions:
   id-token: write
 
 jobs:
-  #job 1: Ingestão + Processamento 
   ingest-and-process:
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -111,7 +110,6 @@ jobs:
         if: steps.check_processed.outputs.exists == 'false'
         run: rm -rf data/raw data/processed tmp 2>/dev/null || true
 
-  # job 2: Testes Estatísticos + Causal 
   run-analyses:
     needs: ingest-and-process
     runs-on: ubuntu-latest
@@ -120,6 +118,9 @@ jobs:
       matrix:
         year: [2013, 2014, 2015, 2016, 2017, 2018, 2019]
       fail-fast: false
+    permissions:
+      contents: write
+      id-token: write
     env:
       GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -167,17 +168,17 @@ jobs:
           fi
 
       - name: Set up Python
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'false'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'false'
         run: pip install -r requirements.txt
 
       - name: Configure year ${{ matrix.year }}
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'false'
         shell: bash
         run: |
           python - <<PY
@@ -192,19 +193,19 @@ jobs:
           PY
 
       - name: Run statistical tests
-        if: steps.check_results.outputs.exists == 'False'
+        if: steps.check_results.outputs.exists == 'false'
         run: python -m scripts.enem_pipeline.run_statistical_tests --config configs/statistical_tests.yml
 
       - name: Free memory after statistical tests
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'false'
         run: rm -rf tmp 2>/dev/null || true
 
       - name: Run causal trees
-        if: steps.check_results.outputs.exists == 'False'
+        if: steps.check_results.outputs.exists == 'false'
         run: python -m scripts.enem_pipeline.run_causal_trees --config configs/causal_trees.yml
 
       - name: Upload results to GCS
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'false'
         shell: bash
         run: |
           YEAR=${{ matrix.year }}
@@ -214,7 +215,7 @@ jobs:
             gs://enem-lake-joao-luca/results/causal/causal_effects_${YEAR}.json || true
 
       - name: Upload artifacts
-        if: steps.check_results.outputs.exists == 'False'
+        if: steps.check_results.outputs.exists == 'false'
         uses: actions/upload-artifact@v4
         with:
           name: enem-metrics-${{ matrix.year }}
@@ -224,6 +225,43 @@ jobs:
             results/statistical/statistical_tests_${{ matrix.year }}.json
             results/causal/causal_effects_${{ matrix.year }}.json
 
+      - name: Copy results to docs
+        run: |
+          YEAR=${{ matrix.year }}
+          mkdir -p docs/enem-metrics-${YEAR}/causal docs/enem-metrics-${YEAR}/statistical
+          if [ "${{ steps.check_results.outputs.exists }}" = "true" ]; then
+            gsutil cp gs://enem-lake-joao-luca/results/statistical/statistical_tests_${YEAR}.json \
+               docs/enem-metrics-${YEAR}/statistical/statistical_tests_${YEAR}.json
+            gsutil cp gs://enem-lake-joao-luca/results/causal/causal_effects_${YEAR}.json \
+               docs/enem-metrics-${YEAR}/causal/causal_effects_${YEAR}.json
+          else
+            cp results/statistical/statistical_tests_${YEAR}.json \
+               docs/enem-metrics-${YEAR}/statistical/statistical_tests_${YEAR}.json
+            cp results/causal/causal_effects_${YEAR}.json \
+               docs/enem-metrics-${YEAR}/causal/causal_effects_${YEAR}.json
+          fi
+
+      - name: Set up Python for data.js
+        if: steps.check_results.outputs.exists == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate data.js
+        run: python scripts/generate_data_js.py
+
+      - name: Commit and push updated docs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          git diff --staged --quiet && exit 0
+          git commit -m "ci: update results ${{ matrix.year }}"
+          for i in 1 2 3; do
+            git pull --rebase origin master && git push && break
+            sleep $((i * 5))
+          done
+
       - name: Free memory after causal trees
-        if: steps.check_results.outputs.exists == 'True'
+        if: steps.check_results.outputs.exists == 'false'
         run: rm -rf tmp 2>/dev/null || true
