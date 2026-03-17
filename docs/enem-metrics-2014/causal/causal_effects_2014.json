@@ -1,0 +1,279 @@
+{
+  "year": 2014,
+  "sample_size_used": 15701,
+  "standardized": true,
+  "effects": [
+    {
+      "treatment": "RENDA",
+      "outcome": "MEDIA_CANDIDATO",
+      "standardized": true,
+      "scale_meta": {
+        "RENDA": {
+          "mean": 424.75689446532067,
+          "std": 192.8802471727933
+        },
+        "MEDIA_CANDIDATO": {
+          "mean": 356.55000063690215,
+          "std": 44.92300599752317
+        }
+      },
+      "features_used": [
+        "SCORE_CULT_PAIS",
+        "INTERNET",
+        "TP_SEXO",
+        "TP_COR_RACA",
+        "TP_ESCOLA",
+        "TP_DEPENDENCIA_ADM_ESC",
+        "TP_LOCALIZACAO_ESC",
+        "TP_SIT_FUNC_ESC"
+      ],
+      "tree_type": "SingleTreeCateInterpreter",
+      "tree_max_depth": 3,
+      "tree_min_samples_leaf": 200,
+      "ate": 0.06735223055077179,
+      "ate_ci_lower": 0.00669197688262356,
+      "ate_ci_upper": 0.12801248421892,
+      "effect_std": 0.043888201836261964,
+      "effect_p10": 0.023000354054316944,
+      "effect_p50": 0.058111241484499615,
+      "effect_p90": 0.11089297376387822,
+      "n": 15701,
+      "tree_rules": "|--- SCORE_CULT_PAIS <= 10.00\n|   |--- SCORE_CULT_PAIS <= 3.50\n|   |   |--- TP_SEXO <= 0.50\n|   |   |   |--- value: [0.06]\n|   |   |--- TP_SEXO >  0.50\n|   |   |   |--- value: [0.04]\n|   |--- SCORE_CULT_PAIS >  3.50\n|   |   |--- TP_COR_RACA <= 1.50\n|   |   |   |--- value: [0.10]\n|   |   |--- TP_COR_RACA >  1.50\n|   |   |   |--- value: [0.07]\n|--- SCORE_CULT_PAIS >  10.00\n|   |--- TP_COR_RACA <= 1.50\n|   |   |--- value: [0.23]\n|   |--- TP_COR_RACA >  1.50\n|   |   |--- value: [0.19]\n",
+      "adaptive_refinement": true,
+      "adaptive_cv_threshold": 0.5,
+      "leaf_stats": [
+        {
+          "leaf_id": 9,
+          "n": 458,
+          "ate": 0.22548,
+          "std": 0.00644,
+          "se": 0.0003,
+          "ci_lower": 0.22489,
+          "ci_upper": 0.22607,
+          "cv": 0.0285,
+          "refined": false,
+          "ate_pts": 10.13,
+          "std_pts": 0.29,
+          "ci_lower_pts": 10.1,
+          "ci_upper_pts": 10.16
+        },
+        {
+          "leaf_id": 10,
+          "n": 375,
+          "ate": 0.18846,
+          "std": 0.01179,
+          "se": 0.00061,
+          "ci_lower": 0.18727,
+          "ci_upper": 0.18966,
+          "cv": 0.0626,
+          "refined": false,
+          "ate_pts": 8.47,
+          "std_pts": 0.53,
+          "ci_lower_pts": 8.41,
+          "ci_upper_pts": 8.52
+        },
+        {
+          "leaf_id": 6,
+          "n": 2174,
+          "ate": 0.09757,
+          "std": 0.02561,
+          "se": 0.00055,
+          "ci_lower": 0.09649,
+          "ci_upper": 0.09865,
+          "cv": 0.2625,
+          "refined": false,
+          "ate_pts": 4.38,
+          "std_pts": 1.15,
+          "ci_lower_pts": 4.33,
+          "ci_upper_pts": 4.43
+        },
+        {
+          "leaf_id": 7,
+          "n": 3074,
+          "ate": 0.06815,
+          "std": 0.02696,
+          "se": 0.00049,
+          "ci_lower": 0.0672,
+          "ci_upper": 0.0691,
+          "cv": 0.3956,
+          "refined": false,
+          "ate_pts": 3.06,
+          "std_pts": 1.21,
+          "ci_lower_pts": 3.02,
+          "ci_upper_pts": 3.1
+        },
+        {
+          "leaf_id": 3,
+          "n": 4268,
+          "ate": 0.06205,
+          "std": 0.01568,
+          "se": 0.00024,
+          "ci_lower": 0.06158,
+          "ci_upper": 0.06252,
+          "cv": 0.2527,
+          "refined": false,
+          "ate_pts": 2.79,
+          "std_pts": 0.7,
+          "ci_lower_pts": 2.77,
+          "ci_upper_pts": 2.81
+        },
+        {
+          "leaf_id": 4,
+          "n": 5352,
+          "ate": 0.03683,
+          "std": 0.01627,
+          "se": 0.00022,
+          "ci_lower": 0.03639,
+          "ci_upper": 0.03726,
+          "cv": 0.4417,
+          "refined": false,
+          "ate_pts": 1.65,
+          "std_pts": 0.73,
+          "ci_lower_pts": 1.63,
+          "ci_upper_pts": 1.67
+        }
+      ],
+      "ate_interpretation": "Um aumento de 1 desvio-padrão em RENDA (≈ R$ 193) está associado a um aumento médio de 3.0 pontos no ENEM (0.067 desvios-padrão de MEDIA_CANDIDATO)."
+    },
+    {
+      "treatment": "SCORE_CULT_PAIS",
+      "outcome": "MEDIA_CANDIDATO",
+      "standardized": true,
+      "scale_meta": {
+        "SCORE_CULT_PAIS": {
+          "mean": 3.092287115470352,
+          "std": 3.476135895272252
+        },
+        "MEDIA_CANDIDATO": {
+          "mean": 356.55000063690215,
+          "std": 44.92300599752317
+        }
+      },
+      "features_used": [
+        "RENDA",
+        "INTERNET",
+        "TP_SEXO",
+        "TP_COR_RACA",
+        "TP_ESCOLA",
+        "TP_DEPENDENCIA_ADM_ESC",
+        "TP_LOCALIZACAO_ESC",
+        "TP_SIT_FUNC_ESC"
+      ],
+      "tree_type": "SingleTreeCateInterpreter",
+      "tree_max_depth": 3,
+      "tree_min_samples_leaf": 200,
+      "ate": 0.1182581549400524,
+      "ate_ci_lower": 0.06326038244553972,
+      "ate_ci_upper": 0.17325592743456505,
+      "effect_std": 0.04776295642357791,
+      "effect_p10": 0.07394308925652887,
+      "effect_p50": 0.10824965371036115,
+      "effect_p90": 0.13957998411371003,
+      "n": 15701,
+      "tree_rules": "|--- TP_ESCOLA <= 1.50\n|   |--- RENDA <= 249.50\n|   |   |--- TP_COR_RACA <= 2.50\n|   |   |   |--- value: [0.05]\n|   |   |--- TP_COR_RACA >  2.50\n|   |   |   |--- value: [0.11]\n|   |--- RENDA >  249.50\n|   |   |--- TP_DEPENDENCIA_ADM_ESC <= 2.50\n|   |   |   |--- value: [0.12]\n|   |   |--- TP_DEPENDENCIA_ADM_ESC >  2.50\n|   |   |   |--- value: [0.08]\n|--- TP_ESCOLA >  1.50\n|   |--- TP_SEXO <= 0.50\n|   |   |--- TP_COR_RACA <= 1.50\n|   |   |   |--- value: [0.28]\n|   |   |--- TP_COR_RACA >  1.50\n|   |   |   |--- value: [0.29]\n|   |--- TP_SEXO >  0.50\n|   |   |--- value: [0.29]\n",
+      "adaptive_refinement": false,
+      "adaptive_cv_threshold": null,
+      "leaf_stats": [
+        {
+          "leaf_id": 12,
+          "n": 382,
+          "ate": 0.28667,
+          "std": 0.00183,
+          "se": 9e-05,
+          "ci_lower": 0.28649,
+          "ci_upper": 0.28685,
+          "cv": 0.0064,
+          "ate_pts": 12.88,
+          "std_pts": 0.08,
+          "ci_lower_pts": 12.87,
+          "ci_upper_pts": 12.89
+        },
+        {
+          "leaf_id": 11,
+          "n": 214,
+          "ate": 0.28546,
+          "std": 0.00206,
+          "se": 0.00014,
+          "ci_lower": 0.28518,
+          "ci_upper": 0.28573,
+          "cv": 0.0072,
+          "ate_pts": 12.82,
+          "std_pts": 0.09,
+          "ci_lower_pts": 12.81,
+          "ci_upper_pts": 12.84
+        },
+        {
+          "leaf_id": 10,
+          "n": 300,
+          "ate": 0.28482,
+          "std": 0.00308,
+          "se": 0.00018,
+          "ci_lower": 0.28447,
+          "ci_upper": 0.28517,
+          "cv": 0.0108,
+          "ate_pts": 12.79,
+          "std_pts": 0.14,
+          "ci_lower_pts": 12.78,
+          "ci_upper_pts": 12.81
+        },
+        {
+          "leaf_id": 6,
+          "n": 11624,
+          "ate": 0.11572,
+          "std": 0.01579,
+          "se": 0.00015,
+          "ci_lower": 0.11543,
+          "ci_upper": 0.11601,
+          "cv": 0.1364,
+          "ate_pts": 5.2,
+          "std_pts": 0.71,
+          "ci_lower_pts": 5.19,
+          "ci_upper_pts": 5.21
+        },
+        {
+          "leaf_id": 4,
+          "n": 1395,
+          "ate": 0.10713,
+          "std": 0.02377,
+          "se": 0.00064,
+          "ci_lower": 0.10588,
+          "ci_upper": 0.10837,
+          "cv": 0.2219,
+          "ate_pts": 4.81,
+          "std_pts": 1.07,
+          "ci_lower_pts": 4.76,
+          "ci_upper_pts": 4.87
+        },
+        {
+          "leaf_id": 7,
+          "n": 775,
+          "ate": 0.07525,
+          "std": 0.01062,
+          "se": 0.00038,
+          "ci_lower": 0.07451,
+          "ci_upper": 0.076,
+          "cv": 0.1411,
+          "ate_pts": 3.38,
+          "std_pts": 0.48,
+          "ci_lower_pts": 3.35,
+          "ci_upper_pts": 3.41
+        },
+        {
+          "leaf_id": 3,
+          "n": 1011,
+          "ate": 0.04731,
+          "std": 0.01135,
+          "se": 0.00036,
+          "ci_lower": 0.04661,
+          "ci_upper": 0.04801,
+          "cv": 0.2398,
+          "ate_pts": 2.13,
+          "std_pts": 0.51,
+          "ci_lower_pts": 2.09,
+          "ci_upper_pts": 2.16
+        }
+      ],
+      "ate_interpretation": "Um aumento de 1 desvio-padrão em SCORE_CULT_PAIS (≈ R$ 3) está associado a um aumento médio de 5.3 pontos no ENEM (0.118 desvios-padrão de MEDIA_CANDIDATO)."
+    }
+  ]
+}
