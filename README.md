@@ -81,6 +81,7 @@ O modelo RLM se verificou com significância alta (p < 0,001) para renda, capita
 - **Fonte:** Microdados INEP — ENEM 2015 a 2019
 - **Amostra:** ~300.000 candidatos/ano após filtragem (DML + Causal Forest) · 2.000/ano (RLM)
 - **Escala de renda:** z-score clássico para estimação · fator R$1k calculado via std robusto (IQR / 1,3489), imune à censura superior declaratória em R$25.425
+- **Mea Culpa:** Eu não tomei dados pós-2019 devido a LGPD. Com efeito, pode-se dizer que a LGPD anonimizou os dados pós-2019, como eu não queria ter essa complicação desnecessária de ligar o questionário ao estudante (revertendo as técnicas de anonimização, o que não garante certeza da chave-primária), eu acabei não usando esses dados. Contudo, não é difícil tomar esses dados numa pesquisa real... é burocrático.
 
 ### Variável de capital cultural (`score_cult_pais`)
 
@@ -194,6 +195,34 @@ O pipeline é orquestrado via **GitHub Actions** e integrado ao **Google Cloud S
 ```
 
 ---
+## 🚀 Deploy Contínuo (CD)
+
+O app interativo é atualizado automaticamente a cada execução do pipeline, sem nenhuma configuração manual de deploy.
+
+### Como funciona
+
+Ao final de cada run do pipeline, o script `scripts/enem_pipeline/generate_data_js.py` lê os JSONs de resultado de `docs/enem-metrics-{year}/` e gera um único arquivo `docs/data.js` — que é a fonte de dados do frontend. O Netlify monitora o repositório via webhook e, ao detectar o push com o `data.js` atualizado, redeploya o site automaticamente em ~30 segundos.
+```
+GitHub Actions
+  → processa dados e salva JSONs em docs/enem-metrics-{year}/
+  → generate_data_js.py lê todos os anos e gera docs/data.js
+  → git commit + push
+    → Netlify detecta o push
+      → site atualizado automaticamente
+```
+
+Não há tokens de deploy, CLI do Netlify ou steps adicionais — o CD é uma consequência direta do push ao repositório.
+
+### Desativar a regeneração do data.js
+
+Por padrão, o `data.js` é regenerado em **todo push**, mesmo quando os JSONs já existem no GCS e as análises são puladas. Para desativar temporariamente — por exemplo, para fazer um push de código sem atualizar o app — comente o step no workflow:
+```yaml
+# - name: Generate data.js
+#   run: python scripts/enem_pipeline/generate_data_js.py
+```
+
+Para desativar permanentemente para um ano específico, use o input `year` do `workflow_dispatch` — o pipeline roda só para aquele ano e o `data.js` é regenerado apenas com os dados desse ano. Use `force=true` para reprocessar um ano já existente no GCS.
+
 
 ## ⚠️ Limitações e Humildade Epistêmica
 
