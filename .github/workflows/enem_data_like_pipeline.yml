@@ -1,7 +1,7 @@
 name: ENEM Data Lake Pipeline (OIDC)
 
 on:
-  push:
+  pull_request:
     branches: [master, feat/data-js]
   workflow_dispatch:
     inputs:
@@ -116,7 +116,7 @@ jobs:
     timeout-minutes: 90
     strategy:
       matrix:
-        year: [2013, 2014, 2015, 2016, 2017, 2018, 2019]
+        year: [ 2015, 2016, 2017, 2018, 2019]
       fail-fast: false
     permissions:
       contents: write
@@ -247,8 +247,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Generate data.js
-        run: python scripts/enem_pipeline/generate_data_js.py
+      # name: Generate data.js
+       # run: python scripts/enem_pipeline/generate_data_js.py
 
       - name: Commit and push updated docs
         run: |
