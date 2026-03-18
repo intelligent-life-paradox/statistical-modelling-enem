@@ -28,7 +28,7 @@ A análise é conduzida através de três pilares metodológicos:
 
 ### Efeito causal da renda — DML + Causal Forest
 
-| Ano  | ATE (σ)       | Pts ENEM | IC 95% (pts)  | R$1.000 → pts | σ_ENEM |
+| Ano  | ATE (σ)       | Pts ENEM | IC 95% (pts)  | +R$1.000 → pts | σ_ENEM |
 |------|---------------|----------|---------------|---------------|--------|
 | 2015 | 0,263 ± 0,047 | +19,6    | [12,8 ; 28,4] | +11,8         | 74,6   |
 | 2016 | 0,230 ± 0,049 | +17,1    | [9,9 ; 24,3]  | +10,3         | 74,3   |
@@ -46,7 +46,7 @@ Todos os ATEs significativos a p < 0,001. Distribuição dos efeitos individuais
 | 2018 | 0,128 | 0,269 | 0,413 |
 
 - **Crescimento da série:** ATE aumentou ~**+21%** entre 2015 e 2019
-- **Média histórica:** R$ 1.000 de renda familiar ≈ **+12 pontos no ENEM** — pode não parecer muito, mas faz muita diferença em cursos mais concorridos, por isso cotas por renda fazem tanto sentido.
+- **Média histórica:** +R$ 1.000 de renda familiar ≈ **+12 pontos no ENEM** — pode não parecer muito, mas faz muita diferença em cursos mais concorridos, por isso cotas por renda fazem tanto sentido.
 
 ### Heterogeneidade por perfil (Causal Forest)
 
@@ -68,7 +68,7 @@ Todos os ATEs significativos a p < 0,001. Distribuição dos efeitos individuais
 O modelo RLM se verificou com significância alta (p < 0,001) para renda, capital cultural, tipo de escola e raça (especificamente negros e pardos) ao longo dos anos.
 
 ### Screenshots do app
-![Pipeline no github actions](images/app_enem_03.png)
+
 ![Heterogeneidade do efeito causal — folhas da árvore CATE](images/app_enem_01.png)
 ![Grupos mais vs menos afetados — padrão transversal](images/app_enem_02.png)
 
@@ -81,6 +81,7 @@ O modelo RLM se verificou com significância alta (p < 0,001) para renda, capita
 - **Fonte:** Microdados INEP — ENEM 2015 a 2019
 - **Amostra:** ~300.000 candidatos/ano após filtragem (DML + Causal Forest) · 2.000/ano (RLM)
 - **Escala de renda:** z-score clássico para estimação · fator R$1k calculado via std robusto (IQR / 1,3489), imune à censura superior declaratória em R$25.425
+- **Mea Culpa:** Eu não tomei dados pós-2019 devido a LGPD. Com efeito, pode-se dizer que a LGPD anonimizou os dados pós-2019, como eu não queria ter essa complicação desnecessária de ligar o questionário ao estudante (revertendo as técnicas de anonimização, o que não garante certeza da chave-primária), eu acabei não usando esses dados. Contudo, não é difícil tomar esses dados numa pesquisa real... é burocrático.
 
 ### Variável de capital cultural (`score_cult_pais`)
 
@@ -93,9 +94,9 @@ Score composto e padronizado (μ=0, σ=1) construído a partir da escolaridade d
 | DML + Causal Forest | `EconML`                    |
 | RLM Huber           | `statsmodels`               |
 | Pipeline de dados   | `pandas`, `numpy`           |
-| App interativo      | Netlify (frontend estático) |
+| App interativo      | Netlify (frontend) |
 | CI/CD               | GitHub Actions              |
-| Versionamento       | `DVC` + Git                 |
+| Versionamento       | Git                 |
 
 ---
 
@@ -131,11 +132,14 @@ statistical-modelling-enem/
 │
 ├── scripts/
 │   └── enem_pipeline/
+        ├── generate_data_js.py          #alimenta o frontend
 │       ├── gcs_utils.py                 # Autenticação e I/O com Google Cloud Storage
 │       ├── ingest_raw_enem.py           # Ingestão dos microdados brutos do INEP
 │       ├── process_enem.py              # Limpeza, feature engineering e padronização
 │       ├── run_causal_trees.py          # DML + Causal Forest via EconML
-│       └── run_statistical_tests.py     # RLM Huber e testes estatísticos
+│       └── run_statistical_tests.py     #roda os testes estatísticos
+
+  # RLM Huber e testes estatísticos
 │
 ├── .github/workflows/                   # CI — GitHub Actions
 ├── .dvcignore
@@ -191,6 +195,35 @@ O pipeline é orquestrado via **GitHub Actions** e integrado ao **Google Cloud S
 ```
 
 ---
+## 🚀 Deploy Contínuo (CD) 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/b67b77e0-4fc5-4f97-87f5-8163e11bd7d2/deploy-status)](https://app.netlify.com/projects/joaolucaanalysisproject/deploys)
+
+O app interativo é atualizado automaticamente a cada execução do pipeline, sem nenhuma configuração manual de deploy.
+
+### Como funciona
+
+Ao final de cada run do pipeline, o script `scripts/enem_pipeline/generate_data_js.py` lê os JSONs de resultado de `docs/enem-metrics-{year}/` e gera um único arquivo `docs/data.js` — que é a fonte de dados do frontend. O Netlify monitora o repositório via webhook e, ao detectar o push com o `data.js` atualizado, redeploya o site automaticamente em ~30 segundos.
+```
+GitHub Actions
+  → processa dados e salva JSONs em docs/enem-metrics-{year}/
+  → generate_data_js.py lê todos os anos e gera docs/data.js
+  → git commit + push
+    → Netlify detecta o push
+      → site atualizado automaticamente
+```
+
+Não há tokens de deploy, CLI do Netlify ou steps adicionais — o CD é uma consequência direta do push ao repositório.
+
+### Desativar a regeneração do data.js
+
+Por padrão, o `data.js` é regenerado em **todo push**, mesmo quando os JSONs já existem no GCS e as análises são puladas. Para desativar temporariamente — por exemplo, para fazer um push de código sem atualizar o app — comente o step no workflow:
+```yaml
+# - name: Generate data.js
+#   run: python scripts/enem_pipeline/generate_data_js.py
+```
+
+Para desativar permanentemente para um ano específico, use o input `year` do `workflow_dispatch` — o pipeline roda só para aquele ano e o `data.js` é regenerado apenas com os dados desse ano. Use `force=true` para reprocessar um ano já existente no GCS.
+
 
 ## ⚠️ Limitações e Humildade Epistêmica
 
@@ -212,13 +245,17 @@ pip install -r requirements.txt
 
 # Ou com uv
 uv sync
+se tiver os dados localmente você deve mudar isso de no workflow| você também pode armazenar esses dados na cloud, setar as permissões IAM
+necessária e guardar as variáveis nos secrets do github onde sua pipeline vai rodar tão boa quanto a minha*.
 
 # Rodar pipeline
 python scripts/enem_pipeline/run.py
 ```
 
+
 Os notebooks em `notebooks/` documentam as etapas de análise exploratória, modelagem RLM, DML e Causal Forest com outputs intermediários.
 
 ---
-
+* FEATURE FUTURA DO PROJETO:
+    pretendo embarcar todo o sistema para que você possa rodar via Docker (projeto em andamento)
 *Microdados INEP · ENEM 2015–2019 · Double Machine Learning (EconML) · RLM statsmodels Huber M-estimator · Causal Forest (EconML)*
