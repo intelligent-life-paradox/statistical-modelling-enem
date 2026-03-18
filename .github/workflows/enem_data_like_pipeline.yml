@@ -2,7 +2,7 @@ name: ENEM Data Lake Pipeline (OIDC)
 
 on:
   pull_request:
-    branches: [master, feat/data-js]
+    branches: [ feat/data-js]
   workflow_dispatch:
     inputs:
       year:
