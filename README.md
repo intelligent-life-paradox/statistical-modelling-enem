@@ -23,7 +23,26 @@ A análise é conduzida através de três pilares metodológicos:
 3. **Causal Forest** — Algoritmo de aprendizado de máquina para estimar **efeitos de tratamento heterogêneos (CATEs)**, identificando quais perfis de candidatos respondem mais ou menos à renda como variável causal.
 
 ---
+## 📐 Como interpretar o ATE
 
+O **ATE (Average Treatment Effect)** é o efeito médio de um aumento de 1 desvio-padrão na renda familiar sobre a nota do ENEM, estimado via Double Machine Learning — ou seja, *controlando* por raça, sexo, acesso à internet, tipo de escola e capital cultural dos pais.
+
+Em linguagem direta: se dois candidatos têm o mesmo perfil socioeconômico em tudo, exceto que um tem renda 1σ maior que o outro (~R$1.700 a mais, dependendo do ano), o DML estima que o candidato de maior renda tende a tirar em média **+19 a +23 pontos a mais** no ENEM.
+
+### O que é o σ de renda
+
+A renda no ENEM é declarada em **faixas fixas** (ex: "de R$1.497 a R$2.245"), não como valor contínuo. O modelo usa o ponto médio de cada faixa e padroniza. Um desvio-padrão de renda (~R$1.700) corresponde aproximadamente a **subir 2–3 faixas de renda** na parte central da distribuição — por exemplo, de R$1.500 para R$3.500.
+
+### O que é a métrica por R$1.000
+
+A métrica **R$1.000 → X pts** é uma re-escala do ATE para uma unidade mais intuitiva. Como a renda é discreta, essa re-escala é uma **interpolação linear** — uma ordem de magnitude, não o efeito exato de uma variação contínua de R$1.000. Use-a para comparações relativas (entre anos, entre grupos), não como previsão pontual.
+
+### O que o ATE *não* diz
+
+- Não é o efeito de *dar* R$1.000 a um candidato — é uma associação causal estimada em dados observacionais
+- Pressupõe que não há confundidores não-observados (motivação, qualidade docente, saúde mental)
+- É um efeito **médio** — o CATE por subgrupo (folhas da árvore causal) é mais informativo para intervenções direcionadas
+---
 ## 📊 Principais Resultados (série 2015–2019)
 
 ### Efeito causal da renda — DML + Causal Forest
@@ -82,7 +101,7 @@ O modelo RLM se verificou com significância alta (p < 0,001) para renda, capita
 - **Amostra:** ~300.000 candidatos/ano após filtragem (DML + Causal Forest) · 2.000/ano (RLM)
 - **Escala de renda:** z-score clássico para estimação · fator R$1k calculado via std robusto (IQR / 1,3489), imune à censura superior declaratória em R$25.425
 - **Mea Culpa 1:** Eu não tomei dados pós-2019 devido a LGPD. Com efeito, pode-se dizer que a LGPD anonimizou os dados pós-2019, como eu não queria ter essa complicação desnecessária de ligar o questionário ao estudante (revertendo as técnicas de anonimização, o que não garante certeza da chave-primária), eu acabei não usando esses dados. Contudo, não é difícil tomar esses dados numa pesquisa real... é burocrático.
-- **Mea Culpa 2:** Quantificar o efeito ao se passar de uma classe de renda para outra seria o mais "correto" tendo em vista como os microdados do enem se apresentam ( para um indivíduo numa classe, a renda dele sempre assume a cota superior daquela classe). Porém, há duas escolhas deliberadas aqui:
+- **Mea Culpa 2:** Quantificar o efeito ao se passar de uma classe de renda para outra seria o mais "correto" tendo em vista como os microdados do enem se apresentam ( para um indivíduo numa classe, a renda dele sempre assume o ponto médio das cotas daquela classe). Porém, há duas escolhas deliberadas aqui:
           1. acho a interpretação +1000 de renda -> X pontos no enem mais intuitiva. Eu poderia facilmente sacrificá-la por uma variável mais         robusta construída como uma combinação de fatores socioeconomômicos que explicassem mais variância —via PCA, por exemplo —, porém, no trade-off entre interpretabilidade e métricas mais fortes, eu preferi interpretabilidade;
           2. O algorítmo de Causal Forest é robusto quanto a esse problema ( afinal, é um algorítmo de árvores) e a heterogeneidade é mais importante que a escala absoluta do problema — ou melhor, ela seria mais "invariante" à escala.
 
