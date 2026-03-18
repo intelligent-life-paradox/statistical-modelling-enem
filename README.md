@@ -81,7 +81,10 @@ O modelo RLM se verificou com significância alta (p < 0,001) para renda, capita
 - **Fonte:** Microdados INEP — ENEM 2015 a 2019
 - **Amostra:** ~300.000 candidatos/ano após filtragem (DML + Causal Forest) · 2.000/ano (RLM)
 - **Escala de renda:** z-score clássico para estimação · fator R$1k calculado via std robusto (IQR / 1,3489), imune à censura superior declaratória em R$25.425
-- **Mea Culpa:** Eu não tomei dados pós-2019 devido a LGPD. Com efeito, pode-se dizer que a LGPD anonimizou os dados pós-2019, como eu não queria ter essa complicação desnecessária de ligar o questionário ao estudante (revertendo as técnicas de anonimização, o que não garante certeza da chave-primária), eu acabei não usando esses dados. Contudo, não é difícil tomar esses dados numa pesquisa real... é burocrático.
+- **Mea Culpa 1:** Eu não tomei dados pós-2019 devido a LGPD. Com efeito, pode-se dizer que a LGPD anonimizou os dados pós-2019, como eu não queria ter essa complicação desnecessária de ligar o questionário ao estudante (revertendo as técnicas de anonimização, o que não garante certeza da chave-primária), eu acabei não usando esses dados. Contudo, não é difícil tomar esses dados numa pesquisa real... é burocrático.
+- **Mea Culpa 2:** Quantificar o efeito ao se passar de uma classe de renda para outra seria o mais "correto" tendo em vista como os microdados do enem se apresentam ( para um indivíduo numa classe, a renda dele sempre assume a cota superior daquela classe). Porém, há duas escolhas deliberadas aqui:
+          1. acho a interpretação +1000 de renda -> X pontos no enem mais intuitiva. Eu poderia facilmente sacrificá-la por uma variável mais         robusta construída como uma combinação de fatores socioeconomômicos que explicassem mais variância —via PCA, por exemplo —, porém, no trade-off entre interpretabilidade e métricas mais fortes, eu preferi interpretabilidade;
+          2. O algorítmo de Causal Forest é robusto quanto a esse problema ( afinal, é um algorítmo de árvores) e a heterogeneidade é mais importante que a escala absoluta do problema — ou melhor, ela seria mais "invariante" à escala.
 
 ### Variável de capital cultural (`score_cult_pais`)
 
